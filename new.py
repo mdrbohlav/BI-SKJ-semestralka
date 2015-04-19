@@ -10,6 +10,8 @@ from argparse import ArgumentParser
 from argparse import ArgumentTypeError
 from datetime import datetime
 import re
+import tempfile
+import urllib.request
 
 def soft_error(message, req_lvl = 1, verbose_lvl = 1, ignore_error = True):
     """Fce 'soft_error' vytiskne na stderr chybovou hlášku a pokud se neignorují chyby, tak ukončí skript, pokud se chyby ignorují, vypíše pouze varování."""
@@ -26,7 +28,7 @@ def error(message):
     print("Stopping script.")
     sys.exit(1)
 
-def verbose(message, req_lvl, verbose_lvl):
+def verbose(message, verbose_lvl, req_lvl):
     """Fce 'verbose' vytiskne hlášku na 'stderr' v závislosti na nastavení 'verbose_lvl'."""
     if verbose_lvl == req_lvl:
         print(message, file = sys.stderr)
@@ -189,8 +191,7 @@ def check_effect(settings, constants):
         elif directive == "columns":
             if not value.isdigit():
                 soft_error("WARNING: wrong effect parameter: columns has to be an integer bigger than 1.", settings["verbose"], 1, settings["ignore_error"])
-                verbose(" - Using default value.", settings["verbose"], 1)
-                settings["columns"] = constants["columns"]
+                verbose(" - Correct value will be computed automatically.", settings["verbose"], 1)
             else:
                 settings["columns"] = int(value)
         elif directive == "multiplot":
@@ -219,6 +220,9 @@ def check_effect(settings, constants):
                     if "colors" not in settings:
                         settings["colors"] = []
                     settings["colors"].append(c)
+
+            if "colors" not in settings:
+                settings["colors"] = colors
         elif directive == "transparent":
             if is_number(value):
                 if float(value) <= 0 and float(value) > 1:
@@ -280,7 +284,10 @@ def check_pathname(val):
         raise ArgumentTypeError(message)
 
 def check_file(val):
-    return val
+    if "http" in val:
+        return val
+    else:
+        return check_pathname(val)
 
 def load_config(settings):
     """Fce, která načítá data z config souboru."""
@@ -424,7 +431,7 @@ if __name__ == '__main__':
     parser.add_argument('-n', dest='name')
     parser.add_argument('-E', dest='ignore_error', action='store_true')
     parser.add_argument('-v', dest='verbose', action='count')
-    parser.add_argument('input', type=check_pathname, action='append')
+    parser.add_argument('input', type=check_file, action='append', nargs='+')
 
     args = parser.parse_args()
 
@@ -443,14 +450,15 @@ if __name__ == '__main__':
         settings["time"] = None
         settings["fps"] = constants["fps"]
 
-    if not (settings["speed"] or settings["fps"]) or \
-        not (settings["speed"] or settings["time"]) or \
-        not (settings["fps"] or settings["time"]):
-        if settings["time"]:
-            settings["fps"] = constants["fps"]
-        else:
-            settings["fps"] = constants["fps"] if not settings["fps"] else settings["fps"]
-            settings["speed"] = constants["speed"] if not settings["speed"] else settings["speed"]
+    if settings["time"] and not settings["fps"] and not settings["speed"]:
+        settings["fps"] = constants["fps"]
+    elif not settings["time"] and settings["fps"] and not settings["speed"]:
+        settings["speed"] = constants["speed"]
+    elif not settings["time"] and not settings["fps"] and settings["speed"]:
+        settings["fps"] = constants["fps"]
+    elif not settings["time"] and not settings["fps"] and not settings["speed"]:
+        settings["fps"] = constants["fps"]
+        settings["speed"] = constants["speed"]
 
     for key in ["time_format", "max_val", "min_val", "max_time", "min_time", "name", "ignore_error", "verbose" ]:
         if not settings[key]:
@@ -496,3 +504,17 @@ if __name__ == '__main__':
 
     if debug:
         print("DEBUG: arguments: {}".format(settings))
+
+    for input_file in settings["input"][0]:
+        if "http" in input_file:
+            file_name = input_file[input_file.rfind("/"):]
+            verbose("Downloading file '{}'".format(input_file), settings["verbose"], 2)
+            with urllib.request.urlopen(input_file) as i_file:
+                for i, line in enumerate(i_file):
+                    print(line)
+        else:
+            print(input_file)
+
+
+    """with tempfile.TemporaryFile() as tmp_file:"""
+
