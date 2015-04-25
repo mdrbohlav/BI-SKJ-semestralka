@@ -12,6 +12,7 @@ from datetime import datetime
 import re
 import tempfile
 import urllib.request
+from urllib.error import URLError, HTTPError
 
 def soft_error(message, req_lvl = 1, verbose_lvl = 1, ignore_error = True):
     """Fce 'soft_error' vytiskne na stderr chybovou hlášku a pokud se neignorují chyby, tak ukončí skript, pokud se chyby ignorují, vypíše pouze varování."""
@@ -32,6 +33,10 @@ def verbose(message, verbose_lvl, req_lvl):
     """Fce 'verbose' vytiskne hlášku na 'stderr' v závislosti na nastavení 'verbose_lvl'."""
     if verbose_lvl == req_lvl:
         print(message, file = sys.stderr)
+
+def percentage_done(done, total):
+    percent = done/total*100
+    print("{0:3d} % done \r".format(int(percent)), end="")
 
 def is_number(val):
   """Fce 'is_number' kontroluje, zdali je 'val' číslo."""
@@ -100,30 +105,36 @@ def check_min(settings, constants):
 
 def check_max_time(settings, constants):
     """Fce 'check_max_time' kontroluje hodnotu 'max_time' a převádí ji na vteřiny."""
-    if settings["max_time"] in [ "max", "auto" ]:
-        return settings["max_time"]
-    else:
+    if settings["max_time"] not in [ "max", "auto" ]:
         pattern = pattern_time_format(settings["time_format"])
         if not re.compile("^" + pattern + "$").match(settings["max_time"]):
             soft_error("WARNING: 'max_time' has an invalid value.", settings["verbose"], 1, settings["ignore_error"])
             verbose(" - Using default value.", settings["verbose"], 1)
             settings["max_time"] = constants["max_time"]
-            return settings["max_time"]
-        settings["max_time"] = datetime.strptime(settings["max_time"], settings["time_format"]).strftime('%s')
+        else:
+            try:
+                settings["max_time"] = datetime.strptime(settings["max_time"], settings["time_format"]).strftime('%s')
+            except ValueError:
+                soft_error("WARNING: 'max_time' has an invalid value.", settings["verbose"], 1, settings["ignore_error"])
+                verbose(" - Using default value.", settings["verbose"], 1)
+                settings["max_time"] = constants["max_time"]
     return settings["max_time"]
 
 def check_min_time(settings, constants):
     """Fce 'check_min_time' kontroluje hodnotu 'min_time' a převádí ji na vteřiny."""
-    if settings["min_time"] in [ "min", "auto" ]:
-        return settings["min_time"]
-    else:
+    if settings["min_time"] not in [ "min", "auto" ]:
         pattern = pattern_time_format(settings["time_format"])
         if not re.compile("^" + pattern + "$").match(settings["min_time"]):
             soft_error("WARNING: 'min_time' has an invalid value.", settings["verbose"], 1, settings["ignore_error"])
             verbose(" - Using default value.", settings["verbose"], 1)
             settings["min_time"] = constants["min_time"]
-            return settings["min_time"]
-        settings["min_time"] = datetime.strptime(settings["min_time"], settings["time_format"]).strftime('%s')
+        else:
+            try:
+                settings["min_time"] = datetime.strptime(settings["min_time"], settings["time_format"]).strftime('%s')
+            except ValueError:
+                soft_error("WARNING: 'min_time' has an invalid value.", settings["verbose"], 1, settings["ignore_error"])
+                verbose(" - Using default value.", settings["verbose"], 1)
+                settings["min_time"] = constants["min_time"]
     return settings["min_time"]
 
 def check_time(settings, constants):
@@ -366,6 +377,14 @@ def load_config(settings):
 
     return settings
 
+def check_data_line(time, value, time_format):
+    pattern = pattern_time_format(settings["time_format"])
+    if not re.compile("^" + pattern + "$").match(time):
+        return 1
+    elif not is_number(value):
+        return 2
+    return 0
+
 if __name__ == '__main__':
     executables = [ "ffmpeg", "gnuplot" , "wget" ]
 
@@ -505,16 +524,89 @@ if __name__ == '__main__':
     if debug:
         print("DEBUG: arguments: {}".format(settings))
 
+    data = {}
     for input_file in settings["input"][0]:
         if "http" in input_file:
             file_name = input_file[input_file.rfind("/"):]
             verbose("Downloading file '{}'".format(input_file), settings["verbose"], 2)
-            with urllib.request.urlopen(input_file) as i_file:
-                for i, line in enumerate(i_file):
-                    print(line)
+            try:
+                with urllib.request.urlopen(input_file) as i_file:
+                    data[input_file] = []
+                    for i, line in enumerate(i_file):
+                        decodedLine = re.sub("\n", "", line.decode("utf-8"))
+                        data[input_file].append(decodedLine.strip())
+                    if len(data[input_file]) == 0:
+                        del data[input_file]
+                        
+            except HTTPError as e:
+                soft_error("ERROR: The server couldn\'t fulfill the request.", settings["verbose"], 1, settings["ignore_error"])
+                verbose(" - error code: {}".format(e.code), settings["verbose"], 1)
+            except URLError as e:
+                soft_error("ERROR: We failed to reach a server.", settings["verbose"], 1, settings["ignore_error"])
+                verbose(" - reason: {}".format(e.code), settings["verbose"], 1)
         else:
-            print(input_file)
+            verbose("Opening file '{}'".format(input_file), settings["verbose"], 2)
+            with open(input_file, mode='rb') as i_file:
+                data[input_file] = []
+                for i, line in enumerate(i_file):
+                    decodedLine = re.sub("\n", "", line.decode("utf-8"))
+                    data[input_file].append(decodedLine.strip())
+                if len(data[input_file]) == 0:
+                    del data[input_file]
 
+    if len(data) == 0:
+        error("No input data were loaded.")
 
-    """with tempfile.TemporaryFile() as tmp_file:"""
+    verbose("Validating input files data...", settings["verbose"], 2)
 
+    suitable_data = []
+
+    for index_file, i_file in enumerate(data):
+        lines = len(data[i_file])
+        prev = 0
+        suitable_data.append("")
+        for index_line, line in enumerate(data[i_file]):
+            """percentage_done(index_line + 1, lines)"""
+            if line == "":
+                continue
+            delim = line.rfind(" ")
+            time = line[:delim].strip()
+            value = line[delim+1:]
+            
+            res = check_data_line(time, value, settings["time_format"])
+            if res == 1:
+                soft_error("WARNING: file '{}':\n - line #{}: wrong time format.".format(i_file, index_line+1), settings["verbose"], 1, settings["ignore_error"])
+                verbose(" - skipping".format(e.code), settings["verbose"], 1)
+            elif res == 2:
+                soft_error("WARNING: file '{}':\n - line #{}: wrong value.".format(i_file, index_line+1), settings["verbose"], 1, settings["ignore_error"])
+                verbose(" - skipping".format(e.code), settings["verbose"], 1)
+
+            try:
+                time = datetime.strptime(time, settings["time_format"]).strftime('%s')
+            except ValueError:
+                soft_error("WARNING: file '{}':\n - line #{}: wrong date.".format(i_file, index_line+1), settings["verbose"], 1, settings["ignore_error"])
+                verbose(" - skipping", settings["verbose"], 1)
+                continue
+            
+            if settings["min_time"] not in ["min", "auto"] and time < settings["min_time"]:
+                continue
+            elif settings["max_time"] not in ["max", "auto"] and time > settings["max_time"]:
+                continue
+
+            size = len(suitable_data)
+            if index_line == 0:
+                suitable_data[size-1] = "{} {}".format(time, value)
+            else:
+                if time - prev <= 0:
+                    soft_error("WARNING: file '{}':\n - line #{}: wrong order of the input data.".format(i_file, index_line+1), settings["verbose"], 1, settings["ignore_error"])
+                    verbose(" - skipping", settings["verbose"], 1)
+                    continue
+                suitable_data[size-1] = suitable_data[size-1] + "\n{} {}".format(time, value)
+            prev = time
+        
+        if suitable_data[len(suitable_data)-1] == "":
+            soft_error("WARNING: file '{}':\n - no suitable data found.".format(i_file), settings["verbose"], 1, settings["ignore_error"])
+            del suitable_data[len(suitable_data)-1]
+
+    if len(suitable_data) == 0:
+        error("ERROR: No suitable data found in any of the input files.")
