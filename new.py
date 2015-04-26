@@ -428,7 +428,7 @@ if __name__ == '__main__':
         "transparent": 0.65,
         "width": 1,
         "steps": 200,
-        "colors": [ "web-green", "black", "dark-grey", "red", "web-blue", "dark-magenta", "dark-cyan", "dark-orange", "dark-yellow", "royalblue", "goldenrod", "dark-spring-green", "purple", "steelblue", "dark-red", "dark-chartreuse", "orchid", "aquamarine", "brown", "yellow", "turquoise", "grey0", "grey10", "grey20", "grey30", "grey40", "grey50", "grey60", "grey70", "grey", "grey80", "grey90", "grey100", "light-red", "light-green", "light-blue", "light-magenta", "light-cyan", "light-goldenrod", "light-pink", "light-turquoise", "gold", "green", "dark-green", "spring-green", "forest-green", "sea-green", "blue", "dark-blue", "midnight-blue", "navy", "medium-blue", "skyblue", "cyan", "magenta", "dark-turquoise", "dark-pink", "coral", "light-coral", "orange-red", "salmon", "dark-salmon", "khaki", "dark-khaki", "dark-goldenrod", "beige", "olive", "orange", "violet", "dark-violet", "plum", "dark-plum", "dark-olivegreen", "orangered4", "brown4", "sienna4", "orchid4", "mediumpurple3", "slateblue1", "yellow4", "sienna1", "tan1", "sandybrown", "light-salmon", "pink", "khaki1", "lemonchiffon", "bisque", "honeydew", "slategrey", "seagreen", "antiquewhite", "chartreuse", "greenyellow", "white", "gray", "light-gray", "light-grey", "dark-gray", "slategray", "gray0", "gray10", "gray20", "gray30", "gray40", "gray50", "gray60", "gray70", "gray80", "gray90", "gray100" ]
+        "colors": [ "web-green", "black", "dark-grey", "red", "web-blue", "dark-magenta", "dark-cyan", "dark-orange", "dark-yellow", "royalblue", "goldenrod", "dark-spring-green", "purple", "steelblue", "dark-red", "dark-chartreuse", "orchid", "aquamarine", "brown", "yellow", "turquoise", "grey0", "grey10", "grey20", "grey30", "grey40", "grey50", "grey60", "grey70", "grey", "grey80", "grey90", "grey100", "light-red", "light-green", "light-blue", "light-magenta", "light-cyan", "light-goldenrod", "light-pink", "light-turquoise", "gold", "green", "dark-green", "spring-green", "forest-green", "sea-green", "blue", "dark-blue", "midnight-blue", "navy", "medium-blue", "skyblue", "cyan", "magenta", "dark-turquoise", "dark-pink", "coral", "light-coral", "orange-red", "salmon", "dark-salmon", "khaki", "dark-khaki", "dark-goldenrod", "beige", "olive", "orange", "violet", "dark-violet", "plum", "dark-plum", "dark-olivegreen", "orangered4", "brown4", "sienna4", "orchid4", "mediumpurple3", "slateblue1", "yellow4", "sienna1", "tan1", "sandybrown", "light-salmon", "pink", "khaki1", "lemonchiffon", "bisque", "honeydew", "slategrey", "seagreen", "antiquewhite", "chartreuse", "greenyellow", "gray", "light-gray", "light-grey", "dark-gray", "slategray", "gray0", "gray10", "gray20", "gray30", "gray40", "gray50", "gray60", "gray70", "gray80", "gray90", "gray100" ]
     }
 
     settings = {
@@ -659,7 +659,6 @@ if __name__ == '__main__':
         "Pokud uživatel nezadal 'columns', vypočítáme nějakou schůdnou hodnotu"
         if not settings["columns"]:
             tmp = math.ceil((joinedData.count("\n")+1)/2) 
-            print(tmp)
             settings["columns"] = tmp if tmp <= constants["max_columns"] else constants["max_columns"]
 
         "Najdeme minimální a maximální hodnotu mezi datumy."
@@ -669,17 +668,14 @@ if __name__ == '__main__':
         "Spočítáme dobu mezi jednotlivými záznamy, po které budeme tisknout bod do grafu."
         distance = (xmax-xmin) / settings["columns"]
 
-        print(distance)
-
         out = ""
-        lines = joinedData.split("\n")
         col_num = 1
         count = 0
         height = 0
         ymax = None
         ymin = None
         start = None
-        for index_line, i_line in enumerate(lines):
+        for index_line, i_line in enumerate(joinedData.split("\n")):
             time, value = i_line.split()
             time = int(time)
             value = float(value)
@@ -747,14 +743,14 @@ if __name__ == '__main__':
         if settings["min_val"] == "min":
             ymin = 0 if ymin >= 0 and ymin - 20 * jump < 0 else ymin - 20 * jump
 
-        "Spočítáme, kolik obrázků bude potřeba pro dokončení každého sloupce a uložíme si nejvyšší hodnotu."
+        "Spočítáme, kolik obrázků bude trvat dokončení každého sloupce a uložíme si nejvyšší hodnotu."
         frames = None
-        tmp_min = ymin if ymin > 0 else ymax if ymax < 0 else 0
+        tmp_border = math.fabs(ymin) if math.fabs(ymin) < math.fabs(ymax) else math.fabs(ymax)
         for index, line in enumerate(out):
             time, value = i_line.split()
             value = float(value)
 
-            tmp_val = (value - tmp_min) / jump if (value - tmp_min) / jump >= 0 else -(value - tmp_min) / jump
+            tmp_val = (tmp_border - math.fabs(value)) / jump
             tmp_val += index * settings["delay"]
             if not frames or tmp_val > frames:
                 frames = tmp_val
@@ -764,10 +760,10 @@ if __name__ == '__main__':
         if not settings["fps"]:
             settings["fps"] = round(frames / (settings["speed"] * settings["time"]), 2)
 
-        "max_frames udává počet kroků pro  zvolený 'speed', pokud 'frames' není jeho násobkem ,je potřeba upravit"
-        max_frames = frames if int(frames / settings["speed"]) == frames / settings["speed"] else int(frames + settings["speed"])
+        "Spočítáme počet framů vzhledem ke 'speed'"
+        real_frames = frames if int(frames / settings["speed"]) == frames / settings["speed"] else round(frames / settings["speed"])
 
-        digits = len(str(max_frames))
+        digits = len(str(real_frames))
 
         yrange = ""
         if settings["min_val"] != "auto":
@@ -794,29 +790,20 @@ if __name__ == '__main__':
         if settings["legend"]:
             general_gnuplot += 'set title "{legend}"\n'.format(legend = settings["legend"])
 
-        general_gnuplot += 'set output "test.png"\n'
-
-        if "colors" not in settings:
-            general_gnuplot += 'plot "-" u 1:2:({circle_size}) w circles lc rgb "{color}" fill solid\n'.format(circle_size = 1500*settings["width"], color = constants["colors"][random.randrange(len(constants["colors"]))])
-        else:
-            general_gnuplot += 'plot "-" u 1:2:({circle_size}) w circles lc rgb "{color}" fill solid\n'.format(circle_size = 1500*settings["width"], color = settings["colors"][random.randrange(len(settings["colors"]))])
-
-        minimum = ymin if ymin >= 0 else 0 if ymax >= 0 else ymax
-        inc = settings["delay"]
-
-        print(general_gnuplot)
-        general_gnuplot += out
-
         with tempfile.TemporaryDirectory() as tmpdirname:
-            """with open(os.path.join(tmpdirname, 'gnuplot.gp'), mode='w+b') as gp_file:
-                gp_file.write(general_gnuplot.encode())"""
-            gnuplot = subprocess.Popen(["gnuplot", "-persist"], stdin=subprocess.PIPE).stdin
+            general_gnuplot += 'set output "test.png"\n'
 
+            if "colors" not in settings:
+                general_gnuplot += 'plot "-" u 1:2:({circle_size}) w circles lc rgb "{color}" fill solid\n'.format(circle_size = 1500*settings["width"], color = constants["colors"][random.randrange(len(constants["colors"]))])
+            else:
+                general_gnuplot += 'plot "-" u 1:2:({circle_size}) w circles lc rgb "{color}" fill solid\n'.format(circle_size = 1500*settings["width"], color = settings["colors"][random.randrange(len(settings["colors"]))])
+
+            general_gnuplot += out
+
+            gnuplot = subprocess.Popen(["gnuplot", "-persist"], stdin=subprocess.PIPE).stdin         
             gnuplot.write(general_gnuplot.encode())
             gnuplot.write(b"\ne")
             gnuplot.flush()
-
-
 
     else:
         verbose("One curve for each input file in one graph will be generated.", settings["verbose"], 1)
