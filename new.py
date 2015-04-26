@@ -14,6 +14,7 @@ import tempfile
 import urllib.request
 from urllib.error import URLError, HTTPError
 import math
+import random
 
 def soft_error(message, req_lvl = 1, verbose_lvl = 1, ignore_error = True):
     """Fce 'soft_error' vytiskne na stderr chybovou hlášku a pokud se neignorují chyby, tak ukončí skript, pokud se chyby ignorují, vypíše pouze varování."""
@@ -114,7 +115,7 @@ def check_max_time(settings, constants):
             settings["max_time"] = constants["max_time"]
         else:
             try:
-                settings["max_time"] = int(datetime.strptime(settings["max_time"], settings["time_format"]).strftime('%s'))
+                settings["max_time"] = int(datetime.strptime(settings["max_time"], settings["time_format"]).strftime('%s')) + int(datetime.today().strftime('%s')) - int(datetime.utcnow().strftime('%s'))
             except ValueError:
                 soft_error("WARNING: 'max_time' has an invalid value.", settings["verbose"], 1, settings["ignore_error"])
                 verbose(" - Using default value.", settings["verbose"], 1)
@@ -131,7 +132,7 @@ def check_min_time(settings, constants):
             settings["min_time"] = constants["min_time"]
         else:
             try:
-                settings["min_time"] = int(datetime.strptime(settings["min_time"], settings["time_format"]).strftime('%s'))
+                settings["min_time"] = int(datetime.strptime(settings["min_time"], settings["time_format"]).strftime('%s')) + int(datetime.today().strftime('%s')) - int(datetime.utcnow().strftime('%s'))
             except ValueError:
                 soft_error("WARNING: 'min_time' has an invalid value.", settings["verbose"], 1, settings["ignore_error"])
                 verbose(" - Using default value.", settings["verbose"], 1)
@@ -219,22 +220,17 @@ def check_effect(settings, constants):
                 verbose(" - Using default value.", settings["verbose"], 1)
                 settings["border"] = constants["border"]
             else:
-                settings["border"] = value
+                if value == "on":
+                    settings["border"] = "bo"
         elif directive == "color":
-            p = subprocess.Popen("gnuplot", stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            output, error = p.communicate( b"show colornames" )
-            colors = re.findall("\\\\n[ ]*([^\\\\ ']+)", str(error))
             for c in value.split(','):
-                if c not in colors:
+                if c not in constants["colors"]:
                     soft_error("WARNING: wrong effect parameter: unknown color '{}'.".format(c), settings["verbose"], 1, settings["ignore_error"])
                     verbose(" - Skipping.", settings["verbose"], 1)
                 else:
                     if "colors" not in settings:
                         settings["colors"] = []
                     settings["colors"].append(c)
-
-            if "colors" not in settings:
-                settings["colors"] = colors
         elif directive == "transparent":
             if is_number(value):
                 if float(value) <= 0 and float(value) > 1:
@@ -341,15 +337,15 @@ def load_config(settings):
             elif directive == "speed":
                 if settings["speed"]:
                     continue
-                settings["speed"] = value
+                settings["speed"] = float(value)
             elif directive == "time":
                 if settings["time"]:
                     continue
-                settings["time"] = value
+                settings["time"] = float(value)
             elif directive == "fps":
                 if settings["fps"]:
                     continue
-                settings["fps"] = value
+                settings["fps"] = float(value)
             elif directive == "legend":
                 if settings["legend"]:
                     continue
@@ -415,7 +411,7 @@ if __name__ == '__main__':
 
     constants = {
         "time_format": "[%Y-%m-%d %H:%M:%S]",
-        "max_columns": 60,
+        "max_columns": 40,
         "speed": 1,
         "fps": 25,
         "name": "new",
@@ -431,7 +427,8 @@ if __name__ == '__main__':
         "method": "average",
         "transparent": 0.65,
         "width": 1,
-        "steps": 200
+        "steps": 200,
+        "colors": [ "web-green", "black", "dark-grey", "red", "web-blue", "dark-magenta", "dark-cyan", "dark-orange", "dark-yellow", "royalblue", "goldenrod", "dark-spring-green", "purple", "steelblue", "dark-red", "dark-chartreuse", "orchid", "aquamarine", "brown", "yellow", "turquoise", "grey0", "grey10", "grey20", "grey30", "grey40", "grey50", "grey60", "grey70", "grey", "grey80", "grey90", "grey100", "light-red", "light-green", "light-blue", "light-magenta", "light-cyan", "light-goldenrod", "light-pink", "light-turquoise", "gold", "green", "dark-green", "spring-green", "forest-green", "sea-green", "blue", "dark-blue", "midnight-blue", "navy", "medium-blue", "skyblue", "cyan", "magenta", "dark-turquoise", "dark-pink", "coral", "light-coral", "orange-red", "salmon", "dark-salmon", "khaki", "dark-khaki", "dark-goldenrod", "beige", "olive", "orange", "violet", "dark-violet", "plum", "dark-plum", "dark-olivegreen", "orangered4", "brown4", "sienna4", "orchid4", "mediumpurple3", "slateblue1", "yellow4", "sienna1", "tan1", "sandybrown", "light-salmon", "pink", "khaki1", "lemonchiffon", "bisque", "honeydew", "slategrey", "seagreen", "antiquewhite", "chartreuse", "greenyellow", "white", "gray", "light-gray", "light-grey", "dark-gray", "slategray", "gray0", "gray10", "gray20", "gray30", "gray40", "gray50", "gray60", "gray70", "gray80", "gray90", "gray100" ]
     }
 
     settings = {
@@ -595,7 +592,7 @@ if __name__ == '__main__':
 
             "Kontrola dalších chyb v datu (13. měsíc apod.)"
             try:
-                time = int(datetime.strptime(time, settings["time_format"]).strftime('%s'))
+                time = int(datetime.strptime(time, settings["time_format"]).strftime('%s')) + int(datetime.today().strftime('%s')) - int(datetime.utcnow().strftime('%s'))
             except ValueError:
                 soft_error("WARNING: file '{}':\n - line #{}: wrong date.".format(i_file, index_line+1), settings["verbose"], 1, settings["ignore_error"])
                 verbose(" - skipping", settings["verbose"], 1)
@@ -661,7 +658,8 @@ if __name__ == '__main__':
         
         "Pokud uživatel nezadal 'columns', vypočítáme nějakou schůdnou hodnotu"
         if not settings["columns"]:
-            tmp = math.ceil((joinedData.count("\n")+1)/1.5) 
+            tmp = math.ceil((joinedData.count("\n")+1)/2) 
+            print(tmp)
             settings["columns"] = tmp if tmp <= constants["max_columns"] else constants["max_columns"]
 
         "Najdeme minimální a maximální hodnotu mezi datumy."
@@ -670,6 +668,8 @@ if __name__ == '__main__':
 
         "Spočítáme dobu mezi jednotlivými záznamy, po které budeme tisknout bod do grafu."
         distance = (xmax-xmin) / settings["columns"]
+
+        print(distance)
 
         out = ""
         lines = joinedData.split("\n")
@@ -759,7 +759,64 @@ if __name__ == '__main__':
             if not frames or tmp_val > frames:
                 frames = tmp_val
 
-        
+        if not settings["speed"]:
+            settings["speed"] = round(frames / (settings["time"] * settings["fps"]), 2)
+        if not settings["fps"]:
+            settings["fps"] = round(frames / (settings["speed"] * settings["time"]), 2)
+
+        "max_frames udává počet kroků pro  zvolený 'speed', pokud 'frames' není jeho násobkem ,je potřeba upravit"
+        max_frames = frames if int(frames / settings["speed"]) == frames / settings["speed"] else int(frames + settings["speed"])
+
+        digits = len(str(max_frames))
+
+        yrange = ""
+        if settings["min_val"] != "auto":
+            yrange = "{}:".format(ymin)
+        if settings["max_val"] != "auto":
+            yrange += ":{}".format(ymax) if yrange == "" else "{}".format(ymax)
+
+        "Nastavení popisků na ose x."
+        xtics = ""
+        tmp = xmin + (xmax-xmin) // 20
+        while tmp < xmax:
+            xtics += "'{:2d}:{:02d}:{:02d}' {:d},".format((tmp//60//60) % 24, (tmp//60) % 60, tmp % 60, tmp)
+            tmp += (xmax - xmin) // 10
+
+        general_gnuplot = 'set term png truecolor\n\
+                           set key off\n\
+                           set xrange ["{xmin}":"{xmax}"] noreverse nowriteback\n\
+                           set yrange [{yrange}] noreverse nowriteback\n\
+                           set style fill transparent solid {transparent} {border}\n\
+                           set xtics rotate by -45 scale 1 font ",10" ({xtics})\n'\
+                           .format(xmin = xmin, xmax = xmax, yrange = yrange, transparent = settings["transparent"],
+                                   border = settings["border"], xtics = xtics[0:len(xtics)-1])
+
+        if settings["legend"]:
+            general_gnuplot += 'set title "{legend}"\n'.format(legend = settings["legend"])
+
+        general_gnuplot += 'set output "test.png"\n'
+
+        if "colors" not in settings:
+            general_gnuplot += 'plot "-" u 1:2:({circle_size}) w circles lc rgb "{color}" fill solid\n'.format(circle_size = 1500*settings["width"], color = constants["colors"][random.randrange(len(constants["colors"]))])
+        else:
+            general_gnuplot += 'plot "-" u 1:2:({circle_size}) w circles lc rgb "{color}" fill solid\n'.format(circle_size = 1500*settings["width"], color = settings["colors"][random.randrange(len(settings["colors"]))])
+
+        minimum = ymin if ymin >= 0 else 0 if ymax >= 0 else ymax
+        inc = settings["delay"]
+
+        print(general_gnuplot)
+        general_gnuplot += out
+
+        with tempfile.TemporaryDirectory() as tmpdirname:
+            """with open(os.path.join(tmpdirname, 'gnuplot.gp'), mode='w+b') as gp_file:
+                gp_file.write(general_gnuplot.encode())"""
+            gnuplot = subprocess.Popen(["gnuplot", "-persist"], stdin=subprocess.PIPE).stdin
+
+            gnuplot.write(general_gnuplot.encode())
+            gnuplot.write(b"\ne")
+            gnuplot.flush()
+
+
 
     else:
         verbose("One curve for each input file in one graph will be generated.", settings["verbose"], 1)
