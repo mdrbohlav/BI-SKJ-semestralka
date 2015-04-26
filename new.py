@@ -13,6 +13,7 @@ import re
 import tempfile
 import urllib.request
 from urllib.error import URLError, HTTPError
+import math
 
 def soft_error(message, req_lvl = 1, verbose_lvl = 1, ignore_error = True):
     """Fce 'soft_error' vytiskne na stderr chybovou hlášku a pokud se neignorují chyby, tak ukončí skript, pokud se chyby ignorují, vypíše pouze varování."""
@@ -113,7 +114,7 @@ def check_max_time(settings, constants):
             settings["max_time"] = constants["max_time"]
         else:
             try:
-                settings["max_time"] = datetime.strptime(settings["max_time"], settings["time_format"]).strftime('%s')
+                settings["max_time"] = int(datetime.strptime(settings["max_time"], settings["time_format"]).strftime('%s'))
             except ValueError:
                 soft_error("WARNING: 'max_time' has an invalid value.", settings["verbose"], 1, settings["ignore_error"])
                 verbose(" - Using default value.", settings["verbose"], 1)
@@ -130,7 +131,7 @@ def check_min_time(settings, constants):
             settings["min_time"] = constants["min_time"]
         else:
             try:
-                settings["min_time"] = datetime.strptime(settings["min_time"], settings["time_format"]).strftime('%s')
+                settings["min_time"] = int(datetime.strptime(settings["min_time"], settings["time_format"]).strftime('%s'))
             except ValueError:
                 soft_error("WARNING: 'min_time' has an invalid value.", settings["verbose"], 1, settings["ignore_error"])
                 verbose(" - Using default value.", settings["verbose"], 1)
@@ -295,6 +296,7 @@ def check_pathname(val):
         raise ArgumentTypeError(message)
 
 def check_file(val):
+    """Fce, která se podívá, jestli se má soubor stáhnout, pokud ne, tak ho zkontroluje"""
     if "http" in val:
         return val
     else:
@@ -377,7 +379,18 @@ def load_config(settings):
 
     return settings
 
+def load_data_file(i_file):
+    data = []
+    for i, line in enumerate(i_file):
+        decodedLine = re.sub("\n", "", line.decode("utf-8"))
+        data.append(decodedLine.strip())
+    if len(data) == 0:
+        del data
+        return None
+    return data
+
 def check_data_line(time, value, time_format):
+    """Fce, která zkontroluje vstupní data (čas a hodnotu)"""
     pattern = pattern_time_format(settings["time_format"])
     if not re.compile("^" + pattern + "$").match(time):
         return 1
@@ -402,7 +415,7 @@ if __name__ == '__main__':
 
     constants = {
         "time_format": "[%Y-%m-%d %H:%M:%S]",
-        "columns": 60,
+        "max_columns": 60,
         "speed": 1,
         "fps": 25,
         "name": "new",
@@ -427,7 +440,7 @@ if __name__ == '__main__':
         "delay": constants["delay"],
         "method": constants["method"],
         "width": constants["width"],
-        "columns": constants["columns"],
+        "columns": None,
         "multiplot": constants["multiplot"],
         "steps": constants["steps"],
         "verbose": constants["verbose"]
@@ -456,12 +469,15 @@ if __name__ == '__main__':
 
     user = vars(args)
 
+    "Zkopírování argumentů do dict settings"
     for key in ["time_format", "max_val", "min_val", "max_time", "min_time", "speed", "time", "fps", "legend", "gnuplot", "effect", "config", "name", "ignore_error", "verbose", "input"]:
         settings[key] = user[key]
 
+    "Pokud je zadaný config soubor, tak ho načteme"
     if settings["config"]:
         settings = load_config(settings)
 
+    "Pokud zadané hodnoty 'speed', 'time' a 'fps', které navzájem nesedí, použijeme defaultní hodnoty"
     if settings["speed"] and settings["time"] and settings["fps"] and not float(settings["speed"]) * float(settings["fps"]) == float(settings["time"]):
         soft_error("WARNING: Mutually exclusive arguments defined. (-S speed, -T time, -F fps)", settings["verbose"], 1, settings["ignore_error"])
         verbose(" - Using default values.", settings["verbose"], 1)
@@ -469,6 +485,7 @@ if __name__ == '__main__':
         settings["time"] = None
         settings["fps"] = constants["fps"]
 
+    "Pokud zadána pouze jedna hodnota z 'speed', 'time' a 'fps', nastaví se druhá podle defaultních hodnot"
     if settings["time"] and not settings["fps"] and not settings["speed"]:
         settings["fps"] = constants["fps"]
     elif not settings["time"] and settings["fps"] and not settings["speed"]:
@@ -479,10 +496,12 @@ if __name__ == '__main__':
         settings["fps"] = constants["fps"]
         settings["speed"] = constants["speed"]
 
+    "Pokud jedna ze zmíněných hodnot nebyla nastavena uživatelem, použijeme defaultní hodnotu"
     for key in ["time_format", "max_val", "min_val", "max_time", "min_time", "name", "ignore_error", "verbose" ]:
         if not settings[key]:
             settings[key] = constants[key]
 
+    "Kontrolu načtených hodnot"
     check_time_format(settings["time_format"])
     settings["min_val"] = check_min(settings, constants)
     settings["max_val"] = check_max(settings, constants)
@@ -524,19 +543,16 @@ if __name__ == '__main__':
     if debug:
         print("DEBUG: arguments: {}".format(settings))
 
+    "Načtení dat ze souborů"
     data = {}
     for input_file in settings["input"][0]:
         if "http" in input_file:
+            "Všechny soubory začínající na 'http' se načítají z internetu"
             file_name = input_file[input_file.rfind("/"):]
             verbose("Downloading file '{}'".format(input_file), settings["verbose"], 2)
             try:
                 with urllib.request.urlopen(input_file) as i_file:
-                    data[input_file] = []
-                    for i, line in enumerate(i_file):
-                        decodedLine = re.sub("\n", "", line.decode("utf-8"))
-                        data[input_file].append(decodedLine.strip())
-                    if len(data[input_file]) == 0:
-                        del data[input_file]
+                    data[input_file] = load_data_file(i_file)
                         
             except HTTPError as e:
                 soft_error("ERROR: The server couldn\'t fulfill the request.", settings["verbose"], 1, settings["ignore_error"])
@@ -547,12 +563,7 @@ if __name__ == '__main__':
         else:
             verbose("Opening file '{}'".format(input_file), settings["verbose"], 2)
             with open(input_file, mode='rb') as i_file:
-                data[input_file] = []
-                for i, line in enumerate(i_file):
-                    decodedLine = re.sub("\n", "", line.decode("utf-8"))
-                    data[input_file].append(decodedLine.strip())
-                if len(data[input_file]) == 0:
-                    del data[input_file]
+                data[input_file] = load_data_file(i_file)
 
     if len(data) == 0:
         error("No input data were loaded.")
@@ -561,18 +572,19 @@ if __name__ == '__main__':
 
     suitable_data = []
 
+    "Kontrola dat ze vstupních souborů, zdali je čas ve správném formátu a pořadí a hodnoty jsou číselné"
     for index_file, i_file in enumerate(data):
         lines = len(data[i_file])
         prev = 0
         suitable_data.append("")
         for index_line, line in enumerate(data[i_file]):
-            """percentage_done(index_line + 1, lines)"""
             if line == "":
                 continue
             delim = line.rfind(" ")
             time = line[:delim].strip()
             value = line[delim+1:]
             
+            "Pokud nastala chyba, 1 pro chybu v čase, 2 pro chybu v hodnotě"
             res = check_data_line(time, value, settings["time_format"])
             if res == 1:
                 soft_error("WARNING: file '{}':\n - line #{}: wrong time format.".format(i_file, index_line+1), settings["verbose"], 1, settings["ignore_error"])
@@ -581,19 +593,22 @@ if __name__ == '__main__':
                 soft_error("WARNING: file '{}':\n - line #{}: wrong value.".format(i_file, index_line+1), settings["verbose"], 1, settings["ignore_error"])
                 verbose(" - skipping".format(e.code), settings["verbose"], 1)
 
+            "Kontrola dalších chyb v datu (13. měsíc apod.)"
             try:
-                time = datetime.strptime(time, settings["time_format"]).strftime('%s')
+                time = int(datetime.strptime(time, settings["time_format"]).strftime('%s'))
             except ValueError:
                 soft_error("WARNING: file '{}':\n - line #{}: wrong date.".format(i_file, index_line+1), settings["verbose"], 1, settings["ignore_error"])
                 verbose(" - skipping", settings["verbose"], 1)
                 continue
             
+            "Pokud čas na aktuálním řádku mimo požadovaný rozsah, pokračuje se dál"
             if settings["min_time"] not in ["min", "auto"] and time < settings["min_time"]:
                 continue
             elif settings["max_time"] not in ["max", "auto"] and time > settings["max_time"]:
                 continue
 
             size = len(suitable_data)
+            "Pokud se nejedná o první řádek ze souboru, tak testujeme pořadí datumů"
             if index_line == 0:
                 suitable_data[size-1] = "{} {}".format(time, value)
             else:
@@ -610,3 +625,145 @@ if __name__ == '__main__':
 
     if len(suitable_data) == 0:
         error("ERROR: No suitable data found in any of the input files.")
+
+    "Bubble sortem seřadíme jednotlivé vstupní soubory podle prvního datumu vzestupně"
+    for index_file in range(len(suitable_data)-1, 0, -1):
+        for i in range(index_file):
+            time = suitable_data[i].split()[0]
+            timeNext = suitable_data[i+1].split()[0]
+            if time > timeNext:
+                tmp = suitable_data[i]
+                suitable_data[i] = suitable_data[i+1]
+                suitable_data[i+1] = tmp
+
+    "Zjistíme, zdali se rozsahy datumů v jednolivých souborech překrývají"
+    overlaping = False
+    for index, i_data in enumerate(suitable_data):
+        if index == 0:
+            continue
+        prevEnd = suitable_data[index-1].split()[-2:-1][0]
+        start = suitable_data[index].split()[0]
+        if start <= prevEnd:
+            overlaping = True
+            break
+
+    if settings["multiplot"] == "on":
+        verbose("Multiplot set to 'on'. One graph for each input file will be generated.", settings["verbose"], 1)
+        """Pro každý soubor zvlášť"""
+        """Spočítat columns, distance"""
+    elif not overlaping:
+        verbose("One curve for all input files in one graph will be generated.", settings["verbose"], 1)
+        joinedData = ""
+
+        "Datumy se nepřekrývají, spojíme je do jednoho grafu"
+        for index, i_data in enumerate(suitable_data):
+            joinedData += "\n" + i_data if index > 0 else i_data
+        
+        "Pokud uživatel nezadal 'columns', vypočítáme nějakou schůdnou hodnotu"
+        if not settings["columns"]:
+            tmp = math.ceil((joinedData.count("\n")+1)/1.5) 
+            settings["columns"] = tmp if tmp <= constants["max_columns"] else constants["max_columns"]
+
+        "Najdeme minimální a maximální hodnotu mezi datumy."
+        xmax = int(joinedData.split()[-2:-1][0])
+        xmin = int(joinedData.split()[0])
+
+        "Spočítáme dobu mezi jednotlivými záznamy, po které budeme tisknout bod do grafu."
+        distance = (xmax-xmin) / settings["columns"]
+
+        out = ""
+        lines = joinedData.split("\n")
+        col_num = 1
+        count = 0
+        height = 0
+        ymax = None
+        ymin = None
+        start = None
+        for index_line, i_line in enumerate(lines):
+            time, value = i_line.split()
+            time = int(time)
+            value = float(value)
+            if index_line == 0:
+                start = time
+            count += 1
+
+            if (start + col_num * distance) < time or start == time:
+                if settings["method"] == "average":
+                    height += value
+                else:
+                    height = value if math.fabs(value) > math.fabs(height) else height
+                continue
+
+            if settings["method"] == "average":
+                height = height / (count-1)
+
+            if col_num == 1:
+                ymax = height
+                ymin = height
+            else:
+                ymax = height if height > ymax else ymax
+                ymin = height if height < ymin else ymin
+
+            tmp = start + distance * col_num - distance / 2
+            out += "{} {}\n".format(tmp, height)
+
+            height = value
+            count = 1
+            col_num += 1
+
+            while start + col_num * distance < time:
+                col_num += 1
+
+        "Pokud jsme končili uprostřed rozsahu jednoho zápisu do grafu, musíme přidat i poslední záznam, který byl přeskočen."
+        if start + col_num * distance < time:
+            if settings["method"] == "average":
+                height = height / (count-1)
+            ymax = height if height > ymax else ymax
+            ymin = height if height < ymin else ymin
+            tmp = start + distance * col_num - distance / 2
+            out += "{} {}".format(tmp, height)
+
+        "Kontrola hodnot, zdali jsou v zadaném rozsahu"
+        if settings["min_val"] not in ["min", "auto"]:
+            if ymax < settings["min_val"]:
+                soft_error("WARNING: 'y_min' out of range.", settings["verbose"], 1, settings["ignore_error"])
+                verbose(" - 'y_min' not set", settings["verbose"], 1)
+            else:
+                ymin = settings["min_val"]
+
+        if settings["max_val"] not in ["max", "auto"]:
+            if ymin > settings["max_val"]:
+                soft_error("WARNING: 'y_max' out of range.", settings["verbose"], 1, settings["ignore_error"])
+                verbose(" - 'y_max' not set", settings["verbose"], 1)
+            else:
+                ymax = settings["max_val"]
+
+        "Skok, o který se má posunout tečka v každém kroku."
+        jump = (ymax - ymin) / settings["steps"]
+
+        "Pokud není nastavena maximální/minimální hodnota, upraví se 'ymax'/'ymin', aby byla nahoře/dole mezera."
+        if settings["max_val"] == "max":
+            ymax = 0 if ymax <= 0 and ymax + 20 * jump > 0 else ymax + 20 * jump
+        if settings["min_val"] == "min":
+            ymin = 0 if ymin >= 0 and ymin - 20 * jump < 0 else ymin - 20 * jump
+
+        "Spočítáme, kolik obrázků bude potřeba pro dokončení každého sloupce a uložíme si nejvyšší hodnotu."
+        frames = None
+        tmp_min = ymin if ymin > 0 else ymax if ymax < 0 else 0
+        for index, line in enumerate(out):
+            time, value = i_line.split()
+            value = float(value)
+
+            tmp_val = (value - tmp_min) / jump if (value - tmp_min) / jump >= 0 else -(value - tmp_min) / jump
+            tmp_val += index * settings["delay"]
+            if not frames or tmp_val > frames:
+                frames = tmp_val
+
+        
+
+    else:
+        verbose("One curve for each input file in one graph will be generated.", settings["verbose"], 1)
+        """Spočítat columns, distance"""
+        for i_data in suitable_data:
+            print(i_data)
+
