@@ -290,7 +290,7 @@ def check_pathname(val):
         raise ArgumentTypeError(message)
 
 def check_file(val):
-    """Checks if the file should be download from the internet. If not it checks the local file.""""
+    """Checks if the file should be download from the internet. If not it checks the local file."""
     if "http" in val:
         return val
     else:
