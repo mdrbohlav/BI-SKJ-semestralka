@@ -1,8 +1,5 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-
-debug = True
-
 import os
 import sys
 import subprocess
@@ -15,10 +12,10 @@ import urllib.request
 from urllib.error import URLError, HTTPError
 import math
 import random
-from time import sleep
+import shlex
 
 def soft_error(message, req_lvl = 1, verbose_lvl = 1, ignore_error = True):
-    """Fce 'soft_error' vytiskne na stderr chybovou hlášku a pokud se neignorují chyby, tak ukončí skript, pokud se chyby ignorují, vypíše pouze varování."""
+    """Prints error message to the stderr and if errors are not ignored it kills script executing."""
     if ignore_error:
         verbose(message, verbose_lvl, req_lvl)
     else:
@@ -27,22 +24,23 @@ def soft_error(message, req_lvl = 1, verbose_lvl = 1, ignore_error = True):
         sys.exit(1)
 
 def error(message):
-    """Fce 'error' vytiskne hlášku na stderr, vždy ukončí skript, používá se pro chyby, které nelze ignorovat."""
+    """Prints error mesage to the stderr and kills the script always."""
     print("ERROR: " + message, file = sys.stderr)
     print("Stopping script.")
     sys.exit(1)
 
 def verbose(message, verbose_lvl, req_lvl):
-    """Fce 'verbose' vytiskne hlášku na 'stderr' v závislosti na nastavení 'verbose_lvl'."""
+    """Prints message to the stderr based on the verbose level."""
     if verbose_lvl == req_lvl:
         print(message, file = sys.stderr)
 
 def percentage_done(done, total):
+    """Prints how many percent is done."""
     percent = done/total*100
     print("     {0:3d} % done \r".format(int(percent)), end="")
 
 def is_number(val):
-  """Fce 'is_number' kontroluje, zdali je 'val' číslo."""
+  """Checks if value is a number."""
   try:
     num = float(val)
     return True
@@ -50,13 +48,14 @@ def is_number(val):
     return False
 
 def pattern_time_format(val):
+    """Retunrs patterns of the time format."""
     pattern = re.sub('[^%YymdHMS]', '.', val)
     pattern = re.sub('%[ymdHMS]', '([0-9]{2})', pattern)
     pattern = re.sub('%[Y]', '([0-9]{4})', pattern)
     return pattern
 
 def check_time_format(val):
-    """Fce 'check_time_format' kontroluje formát času."""
+    """Checks time format if it is in correct form."""
     correct = False
     for option in [ "%d", "%H", "%m", "%M", "%S", "%y", "%Y" ]:
         if option in val:
@@ -83,7 +82,7 @@ def check_time_format(val):
         error(message)
 
 def check_max(settings, constants):
-    """Fce 'check_max' kontroluje, zdali specifikovaná hodnota je buď číslo, nebo 'max", nebo 'auto'."""
+    """Checks if the maximum value is number, 'max' or 'auto'."""
     if settings["max_val"] not in [ "max", "auto" ]:
         if is_number(settings["max_val"]):
             settings["max_val"] = float(settings["max_val"])
@@ -95,7 +94,7 @@ def check_max(settings, constants):
         
 
 def check_min(settings, constants):
-    """Fce 'check_min' kontroluje, zdali specifikovaná hodnota je buď číslo, nebo 'min", nebo 'auto'."""
+    """Checks if the minimum value is number, 'min' or 'auto'."""
     if settings["min_val"] not in [ "min", "auto" ]:
         if is_number(settings["min_val"]):
             settings["min_val"] = float(settings["min_val"])
@@ -107,7 +106,7 @@ def check_min(settings, constants):
         
 
 def check_max_time(settings, constants):
-    """Fce 'check_max_time' kontroluje hodnotu 'max_time' a převádí ji na vteřiny."""
+    """Checks maximum time value and converts it to the seconds."""
     if settings["max_time"] not in [ "max", "auto" ]:
         pattern = pattern_time_format(settings["time_format"])
         if not re.compile("^" + pattern + "$").match(settings["max_time"]):
@@ -124,7 +123,7 @@ def check_max_time(settings, constants):
     return settings["max_time"]
 
 def check_min_time(settings, constants):
-    """Fce 'check_min_time' kontroluje hodnotu 'min_time' a převádí ji na vteřiny."""
+    """Checks minimum time value and converts it to the seconds."""
     if settings["min_time"] not in [ "min", "auto" ]:
         pattern = pattern_time_format(settings["time_format"])
         if not re.compile("^" + pattern + "$").match(settings["min_time"]):
@@ -141,6 +140,7 @@ def check_min_time(settings, constants):
     return settings["min_time"]
 
 def check_time(settings, constants):
+    """Checks time value if it is valid and compare it to the FPS and speed."""
     if not is_number(settings["time"]):
         soft_error("WARNING: 'time' has an invalid value.", settings["verbose"], 1, settings["ignore_error"])
         settings["time"] = None
@@ -153,6 +153,7 @@ def check_time(settings, constants):
     return settings
 
 def check_speed(settings, constants):
+    """Checks speed value if it is valid."""
     if not is_number(settings["speed"]):
         soft_error("WARNING: 'speed' has an invalid value.", settings["verbose"], 1, settings["ignore_error"])
         verbose(" - Using default value.", settings["verbose"], 1)
@@ -160,6 +161,7 @@ def check_speed(settings, constants):
     return settings["speed"]
 
 def check_fps(settings, constants):
+    """Checks FPS value if it is valid."""
     if not is_number(settings["fps"]):
         soft_error("WARNING: 'fps' has an invalid value.", settings["verbose"], 1, settings["ignore_error"])
         verbose(" - Using default value.", settings["verbose"], 1)
@@ -167,6 +169,7 @@ def check_fps(settings, constants):
     return settings["fps"]
 
 def check_legend(val):
+    """Checks if legend is not an empty string."""
     if val.strip() == "":
         soft_error("WARNING: 'legend' is an empty string.", settings["verbose"], 1, settings["ignore_error"])
         verbose(" - Removing.", settings["verbose"], 1)
@@ -174,6 +177,7 @@ def check_legend(val):
     return val
 
 def check_name(val, constants):
+    """Checks if name is not an empty string."""
     if val.strip() == "":
         soft_error("WARNING: 'name' is an empty string.", settings["verbose"], 1, settings["ignore_error"])
         verbose(" - Using script name.", settings["verbose"], 1)
@@ -181,11 +185,11 @@ def check_name(val, constants):
     return val
 
 def check_gnuplot(val):
-    """Fce 'check_gnuplot' kontroluje zadané parametry pro 'gnuplot'."""
+    """Checks gnuplot parameters."""
     return val
 
 def check_effect(settings, constants):
-    """Fce 'check_effect' kontroluje zadané parametry pro efekt."""
+    """Checks effect parameters."""
     params = ':'.join(settings["effect"]).split(":")
     for param in params:
         tmp = param.split("=")
@@ -270,7 +274,7 @@ def check_effect(settings, constants):
     return settings
 
 def check_pathname(val):
-    """Fce 'check_pathname' kontroluje, zdali zadaný soubor existuje a má práva pro čtení."""
+    """Checks path name. Also checks if the file exists and is readable."""
     try:
         abs_path = os.path.abspath(val)
         if not os.path.isfile(abs_path):
@@ -286,14 +290,14 @@ def check_pathname(val):
         raise ArgumentTypeError(message)
 
 def check_file(val):
-    """Fce, která se podívá, jestli se má soubor stáhnout, pokud ne, tak ho zkontroluje"""
+    """Checks if the file should be download from the internet. If not it checks the local file.""""
     if "http" in val:
         return val
     else:
         return check_pathname(val)
 
 def load_config(settings):
-    """Fce, která načítá data z config souboru."""
+    """Loads config file."""
     with open(settings["config"], 'r', encoding='utf-8') as configFile:
         for line in list(reversed(list(enumerate(configFile)))):
             i = line[0]
@@ -370,6 +374,7 @@ def load_config(settings):
     return settings
 
 def load_data_file(i_file):
+    """Loads input data file."""
     data = []
     for i, line in enumerate(i_file):
         decodedLine = re.sub("\n", "", line.decode("utf-8"))
@@ -380,6 +385,7 @@ def load_data_file(i_file):
     return data
 
 def check_data_line(time, value, time_format):
+    """Checks input data values (time and value)."""
     """Fce, která zkontroluje vstupní data (čas a hodnotu)"""
     pattern = pattern_time_format(settings["time_format"])
     if not re.compile("^" + pattern + "$").match(time):
@@ -389,7 +395,7 @@ def check_data_line(time, value, time_format):
     return 0
 
 def select_drawable_data(data, distance, settings):
-    "Fce, která z vhodných dat vybere (spočte) ta, která budou vykreslena do grafu"
+    """Selects data that should be shown in the graph. Depends on te selected method it can compute the value."""
     res_output = ""
     col_num = 1
     counter = 0
@@ -432,7 +438,7 @@ def select_drawable_data(data, distance, settings):
         while start + col_num * distance < time:
             col_num += 1
 
-    "Pokud jsme končili uprostřed rozsahu jednoho zápisu do grafu, musíme přidat i poslední záznam, který byl přeskočen."
+    "If the loop ended in the middle of the column last value was not added."
     if start + col_num * distance < time:
         if settings["method"] == "average":
             height = height / (counter-1)
@@ -441,7 +447,7 @@ def select_drawable_data(data, distance, settings):
         tmp = start + distance * col_num - distance / 2
         res_output += "{} {}".format(tmp, height)
 
-    "Kontrola hodnot, zdali jsou v zadaném rozsahu"
+    "Checks if the values are in the desired range."
     if settings["min_val"] not in ["min", "auto"]:
         if ymax < settings["min_val"]:
             soft_error("WARNING: 'y_min' out of range.", settings["verbose"], 1, settings["ignore_error"])
@@ -459,7 +465,7 @@ def select_drawable_data(data, distance, settings):
     return [res_output, ymax, ymin]
 
 def count_frames(data, ymax, ymin, jump):
-    "Spočítáme, kolik obrázků bude trvat dokončení každého sloupce a uložíme si nejvyšší hodnotu."
+    """Counts how many frames will take to each circle to get to the position and returns the highest value."""
     frames = None
     tmp_border = math.fabs(ymin) if math.fabs(ymin) < math.fabs(ymax) else math.fabs(ymax)
     for index, line in enumerate(data.split("\n")):
@@ -475,18 +481,19 @@ def count_frames(data, ymax, ymin, jump):
     return frames
 
 def get_max_date(data, prevMax):
-    "Najdeme minimální a maximální hodnotu mezi datumy."
+    """Finds the maximal dates."""
     if not prevMax or prevMax < int(i_data.split()[-2:-1][0]):
         prevMax = int(i_data.split()[-2:-1][0])
     return prevMax
 
 def get_min_date(data, prevMin):
+    """Finds the minimal dates."""
     if not prevMin or prevMin > int(i_data.split()[0]):
         prevMin = int(i_data.split()[0])
     return prevMin
 
 def set_speed_fps_if_needed(settings, frames):
-    "Dopočítáme speed, popřípadě fps"
+    """Sets FPS and speed it hey are not set."""
     if not settings["speed"]:
         settings["speed"] = round(frames / (settings["time"] * settings["fps"]), 2)
     if not settings["fps"]:
@@ -494,7 +501,7 @@ def set_speed_fps_if_needed(settings, frames):
     return settings
 
 def set_y_range(min_val, max_val, ymin, ymax):
-    "Nastavíme rozsah osy y"
+    """Sets range of the y axis"""
     yrange = ""
     if settings["min_val"] != "auto":
         yrange = "{}:".format(ymin)
@@ -503,7 +510,7 @@ def set_y_range(min_val, max_val, ymin, ymax):
     return yrange
 
 def set_x_tics(xmin, xmax):
-    "Nastavení popisků na ose x."
+    """Sets labels for the x axis."""
     xtics = ""
     tmp = xmin + (xmax-xmin) // 20
     while tmp < xmax:
@@ -511,8 +518,11 @@ def set_x_tics(xmin, xmax):
         tmp += (xmax - xmin) // 10
     return xtics
 
-def generate_video(settings):
+def generate_video(settings, digits, tmp_dir):
+    """Creates target directory and generates video (using ffmpeg)."""
     index = 1
+    video_name = settings["name"] + '.mp4'
+    print("Creating target directory for the video.")
     while os.path.isdir(settings["name"]):
         if index == 1:
             settings["name"] += '_{}'.format(index)
@@ -520,11 +530,19 @@ def generate_video(settings):
             settings["name"] = settings["name"][:settings["name"].rfind("_")] + '_{}'.format(index)
         index += 1
     os.makedirs(settings["name"])
-    gnuplot = subprocess.Popen(["gnuplot", "-persist"], stdin=subprocess.PIPE).stdin         
-    gnuplot.write(gnuplot_settings.encode())
-    gnuplot.flush()
+
+    print("Generating video...")
+    cmd = ''.join(('ffmpeg -i "{}/%0{}d.png"'.format(tmp_dir, digits),
+                  ' -r {}'.format(settings["fps"]),
+                  ' {}/{}'.format(settings["name"], video_name)))
+    proc = subprocess.Popen(shlex.split(cmd), stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
+    output = proc.communicate()[0].decode()
+    
+    return "Video generated: '{}/{}'".format(settings["name"], video_name)
 
 def process_data(data, settings):
+    """Calcualtes all needed values and generates all frames."""
+    print("Processing data and generating all frames...")
     count = 0
     xmax = None
     xmin = None
@@ -532,16 +550,16 @@ def process_data(data, settings):
         xmax = get_max_date(i_data, xmax)
         xmin = get_min_date(i_data, xmin)
 
-        "Sečteme počet vstupních dat"
+        "Counts # of input values."
         count += math.ceil((i_data.count("\n")+1)/2)
 
     if not settings["columns"]:
         settings["columns"] = count if count <= constants["max_columns"] else constants["max_columns"]
 
-    "Spočítáme dobu mezi jednotlivými záznamy, po které budeme tisknout bod do grafu."
+    "Counts time between each records after which next circle should appear."
     distance = (xmax-xmin) / settings["columns"]
 
-    "Vybereme konkrétní data pro vykreslení a vypočteme jejich maximální a minimální hodnotu"
+    "Selects desired data and counts their maximal and minimal value."
     res_output = []
     ymax = None
     ymin = None
@@ -551,10 +569,10 @@ def process_data(data, settings):
         ymax = res[1] if not ymax or ymax < res[1] else ymax
         ymin = res[2] if not ymin or ymin > res[2] else ymin
 
-    "Skok, o který se má posunout tečka v každém kroku."
+    "Counts size of the jump - how much the circle should move each step."
     jump = (ymax - ymin) / settings["steps"]
 
-    "Pokud není nastavena maximální/minimální hodnota, upraví se 'ymax'/'ymin', aby byla nahoře/dole mezera."
+    "If the minimal and maximal values are not set 'ymax' and 'ymin' are adjusted to create a gap in the top and bottom of the graph."
     if settings["max_val"] == "max":
         ymax = 0 if ymax <= 0 and ymax + 20 * jump > 0 else ymax + 20 * jump
     if settings["min_val"] == "min":
@@ -571,7 +589,7 @@ def process_data(data, settings):
 
     settings = set_speed_fps_if_needed(settings, frames)
 
-    "Spočítáme počet framů vzhledem ke 'speed'"
+    "Counts # of the frames according to the speed."
     real_frames = frames if int(frames / settings["speed"]) == frames / settings["speed"] else round(frames / settings["speed"])
 
     digits = len(str(real_frames))
@@ -624,59 +642,60 @@ def process_data(data, settings):
         general_gnuplot += 'set style line {} lc rgb "{}"\n'.format(index + 1, selected_colors[index], index + 3)
 
 
-    i = int(settings["delay"])
-    counter = 0
-    while i < real_frames + settings["delay"]:
-        percentage_done(i - settings["delay"] + 1, real_frames)
-        i += int(settings["speed"])
-        counter += 1
-        k = i / settings["delay"]
-        effect_data = []
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        i = int(settings["delay"])
+        counter = 0
+        while i < real_frames + settings["delay"]:
+            percentage_done(i - settings["delay"] + 1, real_frames)
+            i += int(settings["speed"])
+            counter += 1
+            k = i / settings["delay"]
+            effect_data = []
 
-        gnuplot_settings = general_gnuplot
-        gnuplot_settings += 'set output "test/{0:0{1}d}.png"\n'.format(counter, digits)
+            gnuplot_settings = general_gnuplot
+            gnuplot_settings += 'set output "{0}/{1:0{2}d}.png"\n'.format(tmp_dir, counter, digits)
 
-        for index in range(0, len(res_output)):
-            if index == 0:
-                gnuplot_settings += 'plot'
-            else:
-                gnuplot_settings += ','
-            gnuplot_settings += ' "-" u 1:2:({}) w circles ls {}'.format(1500*settings["width"], index + 1)
-        gnuplot_settings += "\n"
-
-        for index, i_data in enumerate(res_output):
-            effect_data.append("")
-            for index_line, line in enumerate(i_data.split("\n")):
-                if line == "" or index_line + 1 > k:
-                    continue
-                time, value = line.split()
-                value = float(value)
-                partial_time, partial_value = partial_out[index][index_line].split()
-                partial_value = float(partial_value)
-
-                if value < 0:
-                    tmp = -1
+            for index in range(0, len(res_output)):
+                if index == 0:
+                    gnuplot_settings += 'plot'
                 else:
-                    tmp = 1
+                    gnuplot_settings += ','
+                gnuplot_settings += ' "-" u 1:2:({}) w circles ls {}'.format(1500*settings["width"], index + 1)
+            gnuplot_settings += "\n"
 
-                val = partial_value - tmp * jump
+            for index, i_data in enumerate(res_output):
+                effect_data.append("")
+                for index_line, line in enumerate(i_data.split("\n")):
+                    if line == "" or index_line + 1 > k:
+                        continue
+                    time, value = line.split()
+                    value = float(value)
+                    partial_time, partial_value = partial_out[index][index_line].split()
+                    partial_value = float(partial_value)
 
-                if math.fabs(val) <= math.fabs(value) or (val > 0 and value < 0) or (val < 0 and value > 0):
-                    val = value
+                    if value < 0:
+                        tmp = -1
+                    else:
+                        tmp = 1
 
-                partial_out[index][index_line] = "{} {}".format(partial_time, val)
-                effect_data[index] += "{} {}\n".format(partial_time, val)
-                
-            gnuplot_settings += effect_data[index]
-            gnuplot_settings += 'e\n'
+                    val = partial_value - tmp * jump
 
-        gnuplot = subprocess.Popen(["gnuplot", "-persist"], stdin=subprocess.PIPE).stdin         
-        gnuplot.write(gnuplot_settings.encode())
-        gnuplot.flush()
+                    if math.fabs(val) <= math.fabs(value) or (val > 0 and value < 0) or (val < 0 and value > 0):
+                        val = value
 
-    print("All frames generated.")
+                    partial_out[index][index_line] = "{} {}".format(partial_time, val)
+                    effect_data[index] += "{} {}\n".format(partial_time, val)
+                    
+                gnuplot_settings += effect_data[index]
+                gnuplot_settings += 'e\n'
 
-    generate_video(settings)
+            gnuplot = subprocess.Popen(["gnuplot", "-persist"], stdin=subprocess.PIPE).stdin         
+            gnuplot.write(gnuplot_settings.encode())
+            gnuplot.flush()
+
+        print("All frames generated.")
+
+        print(generate_video(settings, digits, tmp_dir))
 
 if __name__ == '__main__':
     executables = [ "ffmpeg", "gnuplot" , "wget" ]
@@ -699,18 +718,18 @@ if __name__ == '__main__':
         "speed": 1,
         "fps": 25,
         "name": "new",
-        "delay": 5,
+        "delay": 10,
         "verbose": 0,
         "ignore_error": False,
-        "min_val": "auto",
-        "max_val": "auto",
+        "min_val": "min",
+        "max_val": "max",
         "min_time": "min",
         "max_time": "max",
         "border": "",
         "method": "average",
         "transparent": 0.65,
         "width": 1,
-        "steps": 60,
+        "steps": 50,
         "colors": [ "web-green", "black", "dark-grey", "red", "web-blue", "dark-magenta", "dark-cyan", "dark-orange", "dark-yellow", "royalblue", "goldenrod", "dark-spring-green", "purple", "steelblue", "dark-red", "dark-chartreuse", "orchid", "aquamarine", "brown", "yellow", "turquoise", "grey0", "grey10", "grey20", "grey30", "grey40", "grey50", "grey60", "grey70", "grey", "grey80", "grey90", "grey100", "light-red", "light-green", "light-blue", "light-magenta", "light-cyan", "light-goldenrod", "light-pink", "light-turquoise", "gold", "green", "dark-green", "spring-green", "forest-green", "sea-green", "blue", "dark-blue", "midnight-blue", "navy", "medium-blue", "skyblue", "cyan", "magenta", "dark-turquoise", "dark-pink", "coral", "light-coral", "orange-red", "salmon", "dark-salmon", "khaki", "dark-khaki", "dark-goldenrod", "beige", "olive", "orange", "violet", "dark-violet", "plum", "dark-plum", "dark-olivegreen", "orangered4", "brown4", "sienna4", "orchid4", "mediumpurple3", "slateblue1", "yellow4", "sienna1", "tan1", "sandybrown", "light-salmon", "pink", "khaki1", "lemonchiffon", "bisque", "honeydew", "slategrey", "seagreen", "antiquewhite", "chartreuse", "greenyellow", "gray", "light-gray", "light-grey", "dark-gray", "slategray", "gray0", "gray10", "gray20", "gray30", "gray40", "gray50", "gray60", "gray70", "gray80", "gray90", "gray100" ]
     }
 
@@ -748,15 +767,15 @@ if __name__ == '__main__':
 
     user = vars(args)
 
-    "Zkopírování argumentů do dict settings"
+    "Copy arguments the the dict settings"
     for key in ["time_format", "max_val", "min_val", "max_time", "min_time", "speed", "time", "fps", "legend", "gnuplot", "effect", "config", "name", "ignore_error", "verbose", "input"]:
         settings[key] = user[key]
 
-    "Pokud je zadaný config soubor, tak ho načteme"
+    "Loads config file"
     if settings["config"]:
         settings = load_config(settings)
 
-    "Pokud zadané hodnoty 'speed', 'time' a 'fps', které navzájem nesedí, použijeme defaultní hodnoty"
+    "Checks speed, time and FPS if they are set all three."
     if settings["speed"] and settings["time"] and settings["fps"] and not float(settings["speed"]) * float(settings["fps"]) == float(settings["time"]):
         soft_error("WARNING: Mutually exclusive arguments defined. (-S speed, -T time, -F fps)", settings["verbose"], 1, settings["ignore_error"])
         verbose(" - Using default values.", settings["verbose"], 1)
@@ -764,7 +783,7 @@ if __name__ == '__main__':
         settings["time"] = None
         settings["fps"] = constants["fps"]
 
-    "Pokud zadána pouze jedna hodnota z 'speed', 'time' a 'fps', nastaví se druhá podle defaultních hodnot"
+    "If only one of the values time, speed and FPS set we have to compute the rest."
     if settings["time"] and not settings["fps"] and not settings["speed"]:
         settings["fps"] = constants["fps"]
     elif not settings["time"] and settings["fps"] and not settings["speed"]:
@@ -775,12 +794,12 @@ if __name__ == '__main__':
         settings["fps"] = constants["fps"]
         settings["speed"] = constants["speed"]
 
-    "Pokud jedna ze zmíněných hodnot nebyla nastavena uživatelem, použijeme defaultní hodnotu"
+    "Using default values if they have not been set by the user."
     for key in ["time_format", "max_val", "min_val", "max_time", "min_time", "name", "ignore_error", "verbose" ]:
         if not settings[key]:
             settings[key] = constants[key]
 
-    "Kontrolu načtených hodnot"
+    "Checking loaded values."
     check_time_format(settings["time_format"])
     settings["min_val"] = check_min(settings, constants)
     settings["max_val"] = check_max(settings, constants)
@@ -819,14 +838,11 @@ if __name__ == '__main__':
         settings["max_time"] = constants["max_time"]
         settings["min_val"] = constants["min_time"]
 
-    if debug:
-        print("DEBUG: arguments: {}".format(settings))
-
-    "Načtení dat ze souborů"
+    "Loading data from files"
     data = {}
     for input_file in settings["input"][0]:
         if "http" in input_file:
-            "Všechny soubory začínající na 'http' se načítají z internetu"
+            "All files starting with 'http'"
             file_name = input_file[input_file.rfind("/"):]
             verbose("Downloading file '{}'".format(input_file), settings["verbose"], 2)
             try:
@@ -851,7 +867,7 @@ if __name__ == '__main__':
 
     suitable_data = []
 
-    "Kontrola dat ze vstupních souborů, zdali je čas ve správném formátu a pořadí a hodnoty jsou číselné"
+    "Checks data from input files - if the time is in correct format, order an if the values are numeric."
     for index_file, i_file in enumerate(data):
         lines = len(data[i_file])
         prev = 0
@@ -863,7 +879,7 @@ if __name__ == '__main__':
             time = line[:delim].strip()
             value = line[delim+1:]
             
-            "Pokud nastala chyba, 1 pro chybu v čase, 2 pro chybu v hodnotě"
+            "Returns 1 for error in time and 2 for error in value."
             res = check_data_line(time, value, settings["time_format"])
             if res == 1:
                 soft_error("WARNING: file '{}':\n - line #{}: wrong time format.".format(i_file, index_line+1), settings["verbose"], 1, settings["ignore_error"])
@@ -872,7 +888,7 @@ if __name__ == '__main__':
                 soft_error("WARNING: file '{}':\n - line #{}: wrong value.".format(i_file, index_line+1), settings["verbose"], 1, settings["ignore_error"])
                 verbose(" - skipping", settings["verbose"], 1)
 
-            "Kontrola dalších chyb v datu (13. měsíc apod.)"
+            "Checks another mistakes in date (month # 13 etc.)"
             try:
                 time = int(datetime.strptime(time, settings["time_format"]).strftime('%s')) + int(datetime.today().strftime('%s')) - int(datetime.utcnow().strftime('%s'))
             except ValueError:
@@ -880,14 +896,14 @@ if __name__ == '__main__':
                 verbose(" - skipping", settings["verbose"], 1)
                 continue
             
-            "Pokud čas na aktuálním řádku mimo požadovaný rozsah, pokračuje se dál"
+            "Skip if the time is out of desired range."
             if settings["min_time"] not in ["min", "auto"] and time < settings["min_time"]:
                 continue
             elif settings["max_time"] not in ["max", "auto"] and time > settings["max_time"]:
                 continue
 
             size = len(suitable_data)
-            "Pokud se nejedná o první řádek ze souboru, tak testujeme pořadí datumů"
+            "If not first row in the file we have to check the order."
             if index_line == 0:
                 suitable_data[size-1] = "{} {}".format(time, value)
             else:
@@ -905,7 +921,7 @@ if __name__ == '__main__':
     if len(suitable_data) == 0:
         error("ERROR: No suitable data found in any of the input files.")
 
-    "Bubble sortem seřadíme jednotlivé vstupní soubory podle prvního datumu vzestupně"
+    "Sorst input files using the date. (bubble sort)"
     for index_file in range(len(suitable_data)-1, 0, -1):
         for i in range(index_file):
             time = suitable_data[i].split()[0]
@@ -915,7 +931,7 @@ if __name__ == '__main__':
                 suitable_data[i] = suitable_data[i+1]
                 suitable_data[i+1] = tmp
 
-    "Zjistíme, zdali se rozsahy datumů v jednolivých souborech překrývají"
+    "Checks overlaping of the dates in all input files."
     overlaping = False
     for index, i_data in enumerate(suitable_data):
         if index == 0:
@@ -930,7 +946,7 @@ if __name__ == '__main__':
         verbose("One curve for all input files in one graph will be generated.", settings["verbose"], 1)
         joinedData = ""
 
-        "Datumy se nepřekrývají, spojíme je do jednoho grafu"
+        "File are not overlaping - we can merge the data."
         for index, i_data in enumerate(suitable_data):
             joinedData += "\n" + i_data if index > 0 else i_data
 
