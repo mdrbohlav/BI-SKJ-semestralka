@@ -15,6 +15,7 @@ import urllib.request
 from urllib.error import URLError, HTTPError
 import math
 import random
+from time import sleep
 
 def soft_error(message, req_lvl = 1, verbose_lvl = 1, ignore_error = True):
     """Fce 'soft_error' vytiskne na stderr chybovou hlášku a pokud se neignorují chyby, tak ukončí skript, pokud se chyby ignorují, vypíše pouze varování."""
@@ -38,7 +39,7 @@ def verbose(message, verbose_lvl, req_lvl):
 
 def percentage_done(done, total):
     percent = done/total*100
-    print("{0:3d} % done \r".format(int(percent)), end="")
+    print("     {0:3d} % done \r".format(int(percent)), end="")
 
 def is_number(val):
   """Fce 'is_number' kontroluje, zdali je 'val' číslo."""
@@ -207,13 +208,6 @@ def check_effect(settings, constants):
                 verbose(" - Correct value will be computed automatically.", settings["verbose"], 1)
             else:
                 settings["columns"] = int(value)
-        elif directive == "multiplot":
-            if value not in [ "off", "on" ]:
-                soft_error("WARNING: wrong effect parameter: multiplot has to be set to 'on' or 'off'.", settings["verbose"], 1, settings["ignore_error"])
-                verbose(" - Using default value.", settings["verbose"], 1)
-                settings["multiplot"] = constants["multiplot"]
-            else:
-                settings["multiplot"] = value
         elif directive == "border":
             if value not in [ "off", "on" ]:
                 soft_error("WARNING: wrong effect parameter: border has to be set to 'on' or 'off'.", settings["verbose"], 1, settings["ignore_error"])
@@ -394,6 +388,296 @@ def check_data_line(time, value, time_format):
         return 2
     return 0
 
+def select_drawable_data(data, distance, settings):
+    "Fce, která z vhodných dat vybere (spočte) ta, která budou vykreslena do grafu"
+    res_output = ""
+    col_num = 1
+    counter = 0
+    height = 0
+    ymax = None
+    ymin = None
+    start = None
+    for index_line, i_line in enumerate(data.split("\n")):
+        time, value = i_line.split()
+        time = int(time)
+        value = float(value)
+        if index_line == 0:
+            start = time
+        counter += 1
+
+        if (start + col_num * distance) > time or start == time:
+            if settings["method"] == "average":
+                height += value
+            else:
+                height = value if math.fabs(value) > math.fabs(height) else height
+            continue
+
+        if settings["method"] == "average":
+            height = height / (counter-1)
+
+        if col_num == 1:
+            ymax = height
+            ymin = height
+        else:
+            ymax = height if height > ymax else ymax
+            ymin = height if height < ymin else ymin
+
+        tmp = start + distance * col_num - distance / 2
+        res_output += "{} {}\n".format(tmp, height)
+
+        height = value
+        counter = 1
+        col_num += 1
+
+        while start + col_num * distance < time:
+            col_num += 1
+
+    "Pokud jsme končili uprostřed rozsahu jednoho zápisu do grafu, musíme přidat i poslední záznam, který byl přeskočen."
+    if start + col_num * distance < time:
+        if settings["method"] == "average":
+            height = height / (counter-1)
+        ymax = height if height > ymax else ymax
+        ymin = height if height < ymin else ymin
+        tmp = start + distance * col_num - distance / 2
+        res_output += "{} {}".format(tmp, height)
+
+    "Kontrola hodnot, zdali jsou v zadaném rozsahu"
+    if settings["min_val"] not in ["min", "auto"]:
+        if ymax < settings["min_val"]:
+            soft_error("WARNING: 'y_min' out of range.", settings["verbose"], 1, settings["ignore_error"])
+            verbose(" - 'y_min' not set", settings["verbose"], 1)
+        else:
+            ymin = settings["min_val"]
+
+    if settings["max_val"] not in ["max", "auto"]:
+        if ymin > settings["max_val"]:
+            soft_error("WARNING: 'y_max' out of range.", settings["verbose"], 1, settings["ignore_error"])
+            verbose(" - 'y_max' not set", settings["verbose"], 1)
+        else:
+            ymax = settings["max_val"]
+
+    return [res_output, ymax, ymin]
+
+def count_frames(data, ymax, ymin, jump):
+    "Spočítáme, kolik obrázků bude trvat dokončení každého sloupce a uložíme si nejvyšší hodnotu."
+    frames = None
+    tmp_border = math.fabs(ymin) if math.fabs(ymin) < math.fabs(ymax) else math.fabs(ymax)
+    for index, line in enumerate(data.split("\n")):
+        if line == "":
+            continue
+        time, value = line.split()
+        value = float(value)
+
+        tmp_val = (tmp_border - math.fabs(value)) / jump
+        tmp_val += index * settings["delay"]
+        if not frames or tmp_val > frames:
+            frames = tmp_val
+    return frames
+
+def get_max_date(data, prevMax):
+    "Najdeme minimální a maximální hodnotu mezi datumy."
+    if not prevMax or prevMax < int(i_data.split()[-2:-1][0]):
+        prevMax = int(i_data.split()[-2:-1][0])
+    return prevMax
+
+def get_min_date(data, prevMin):
+    if not prevMin or prevMin > int(i_data.split()[0]):
+        prevMin = int(i_data.split()[0])
+    return prevMin
+
+def set_speed_fps_if_needed(settings, frames):
+    "Dopočítáme speed, popřípadě fps"
+    if not settings["speed"]:
+        settings["speed"] = round(frames / (settings["time"] * settings["fps"]), 2)
+    if not settings["fps"]:
+        settings["fps"] = round(frames / (settings["speed"] * settings["time"]), 2)
+    return settings
+
+def set_y_range(min_val, max_val, ymin, ymax):
+    "Nastavíme rozsah osy y"
+    yrange = ""
+    if settings["min_val"] != "auto":
+        yrange = "{}:".format(ymin)
+    if settings["max_val"] != "auto":
+        yrange += ":{}".format(ymax) if yrange == "" else "{}".format(ymax)
+    return yrange
+
+def set_x_tics(xmin, xmax):
+    "Nastavení popisků na ose x."
+    xtics = ""
+    tmp = xmin + (xmax-xmin) // 20
+    while tmp < xmax:
+        xtics += "'{:2d}:{:02d}:{:02d}' {:d},".format((tmp//60//60) % 24, (tmp//60) % 60, tmp % 60, tmp)
+        tmp += (xmax - xmin) // 10
+    return xtics
+
+def generate_video(settings):
+    index = 1
+    while os.path.isdir(settings["name"]):
+        if index == 1:
+            settings["name"] += '_{}'.format(index)
+        else:
+            settings["name"] = settings["name"][:settings["name"].rfind("_")] + '_{}'.format(index)
+        index += 1
+    os.makedirs(settings["name"])
+    gnuplot = subprocess.Popen(["gnuplot", "-persist"], stdin=subprocess.PIPE).stdin         
+    gnuplot.write(gnuplot_settings.encode())
+    gnuplot.flush()
+
+def process_data(data, settings):
+    count = 0
+    xmax = None
+    xmin = None
+    for i_data in data:
+        xmax = get_max_date(i_data, xmax)
+        xmin = get_min_date(i_data, xmin)
+
+        "Sečteme počet vstupních dat"
+        count += math.ceil((i_data.count("\n")+1)/2)
+
+    if not settings["columns"]:
+        settings["columns"] = count if count <= constants["max_columns"] else constants["max_columns"]
+
+    "Spočítáme dobu mezi jednotlivými záznamy, po které budeme tisknout bod do grafu."
+    distance = (xmax-xmin) / settings["columns"]
+
+    "Vybereme konkrétní data pro vykreslení a vypočteme jejich maximální a minimální hodnotu"
+    res_output = []
+    ymax = None
+    ymin = None
+    for i_data in data:
+        res = select_drawable_data(i_data, distance, settings)
+        res_output.append(res[0])
+        ymax = res[1] if not ymax or ymax < res[1] else ymax
+        ymin = res[2] if not ymin or ymin > res[2] else ymin
+
+    "Skok, o který se má posunout tečka v každém kroku."
+    jump = (ymax - ymin) / settings["steps"]
+
+    "Pokud není nastavena maximální/minimální hodnota, upraví se 'ymax'/'ymin', aby byla nahoře/dole mezera."
+    if settings["max_val"] == "max":
+        ymax = 0 if ymax <= 0 and ymax + 20 * jump > 0 else ymax + 20 * jump
+    if settings["min_val"] == "min":
+        ymin = 0 if ymin >= 0 and ymin - 20 * jump < 0 else ymin - 20 * jump
+
+    frames = None
+    for i_data in res_output:
+        if not frames:
+            tmp = count_frames(i_data, ymax, ymin, jump)
+            frames = tmp
+        else:
+            tmp = count_frames(i_data, ymax, ymin, jump)
+            frames = tmp if tmp > frames else frames
+
+    settings = set_speed_fps_if_needed(settings, frames)
+
+    "Spočítáme počet framů vzhledem ke 'speed'"
+    real_frames = frames if int(frames / settings["speed"]) == frames / settings["speed"] else round(frames / settings["speed"])
+
+    digits = len(str(real_frames))
+
+    yrange = set_y_range(settings["min_val"], settings["max_val"], ymin, ymax)
+
+    xtics = set_x_tics(xmin, xmax)
+
+    general_gnuplot = 'set term png truecolor\n\
+                       set key off\n\
+                       set xrange ["{xmin}":"{xmax}"] noreverse nowriteback\n\
+                       set yrange [{yrange}] noreverse nowriteback\n\
+                       unset autoscale\n\
+                       set style fill transparent solid {transparent} {border}\n\
+                       set xtics rotate by -45 scale 1 font ",10" ({xtics})\n'\
+                       .format(xmin = xmin, xmax = xmax, yrange = yrange, transparent = settings["transparent"],
+                               border = settings["border"], xtics = xtics[0:len(xtics)-1])
+
+    if settings["legend"]:
+        general_gnuplot += 'set title "{legend}"\n'.format(legend = settings["legend"])
+
+    partial_out = []
+    selected_colors = []
+
+    for index, i_data in enumerate(res_output):
+        partial_out.append([])
+        for line in i_data.split("\n"):
+            if line == "":
+                continue
+            time, value = line.split()
+            if float(value) < 0:
+                partial_out[index].append("{} {}".format(time, ymin))
+            else:
+                partial_out[index].append("{} {}".format(time, ymax))
+
+        if "colors" not in settings:
+            tmp = constants["colors"][random.randrange(len(constants["colors"]))]
+            while tmp in selected_colors:
+                tmp = constants["colors"][random.randrange(len(constants["colors"]))]
+            selected_colors.append(tmp)
+        else:
+            tmp = settings["colors"][random.randrange(len(settings["colors"]))]
+            while tmp in selected_colors:
+                if len(selected_colors) >= len(res_output):
+                    tmp = constants["colors"][random.randrange(len(constants["colors"]))]
+                else:
+                    tmp = settings["colors"][random.randrange(len(settings["colors"]))]
+            selected_colors.append(tmp)
+
+        general_gnuplot += 'set style line {} lc rgb "{}"\n'.format(index + 1, selected_colors[index], index + 3)
+
+
+    i = int(settings["delay"])
+    counter = 0
+    while i < real_frames + settings["delay"]:
+        percentage_done(i - settings["delay"] + 1, real_frames)
+        i += int(settings["speed"])
+        counter += 1
+        k = i / settings["delay"]
+        effect_data = []
+
+        gnuplot_settings = general_gnuplot
+        gnuplot_settings += 'set output "test/{0:0{1}d}.png"\n'.format(counter, digits)
+
+        for index in range(0, len(res_output)):
+            if index == 0:
+                gnuplot_settings += 'plot'
+            else:
+                gnuplot_settings += ','
+            gnuplot_settings += ' "-" u 1:2:({}) w circles ls {}'.format(1500*settings["width"], index + 1)
+        gnuplot_settings += "\n"
+
+        for index, i_data in enumerate(res_output):
+            effect_data.append("")
+            for index_line, line in enumerate(i_data.split("\n")):
+                if line == "" or index_line + 1 > k:
+                    continue
+                time, value = line.split()
+                value = float(value)
+                partial_time, partial_value = partial_out[index][index_line].split()
+                partial_value = float(partial_value)
+
+                if value < 0:
+                    tmp = -1
+                else:
+                    tmp = 1
+
+                val = partial_value - tmp * jump
+
+                if math.fabs(val) <= math.fabs(value) or (val > 0 and value < 0) or (val < 0 and value > 0):
+                    val = value
+
+                partial_out[index][index_line] = "{} {}".format(partial_time, val)
+                effect_data[index] += "{} {}\n".format(partial_time, val)
+                
+            gnuplot_settings += effect_data[index]
+            gnuplot_settings += 'e\n'
+
+        gnuplot = subprocess.Popen(["gnuplot", "-persist"], stdin=subprocess.PIPE).stdin         
+        gnuplot.write(gnuplot_settings.encode())
+        gnuplot.flush()
+
+    print("All frames generated.")
+
+    generate_video(settings)
+
 if __name__ == '__main__':
     executables = [ "ffmpeg", "gnuplot" , "wget" ]
 
@@ -411,14 +695,13 @@ if __name__ == '__main__':
 
     constants = {
         "time_format": "[%Y-%m-%d %H:%M:%S]",
-        "max_columns": 40,
+        "max_columns": 30,
         "speed": 1,
         "fps": 25,
         "name": "new",
-        "delay": 10,
+        "delay": 5,
         "verbose": 0,
         "ignore_error": False,
-        "multiplot": "off",
         "min_val": "auto",
         "max_val": "auto",
         "min_time": "min",
@@ -427,7 +710,7 @@ if __name__ == '__main__':
         "method": "average",
         "transparent": 0.65,
         "width": 1,
-        "steps": 200,
+        "steps": 60,
         "colors": [ "web-green", "black", "dark-grey", "red", "web-blue", "dark-magenta", "dark-cyan", "dark-orange", "dark-yellow", "royalblue", "goldenrod", "dark-spring-green", "purple", "steelblue", "dark-red", "dark-chartreuse", "orchid", "aquamarine", "brown", "yellow", "turquoise", "grey0", "grey10", "grey20", "grey30", "grey40", "grey50", "grey60", "grey70", "grey", "grey80", "grey90", "grey100", "light-red", "light-green", "light-blue", "light-magenta", "light-cyan", "light-goldenrod", "light-pink", "light-turquoise", "gold", "green", "dark-green", "spring-green", "forest-green", "sea-green", "blue", "dark-blue", "midnight-blue", "navy", "medium-blue", "skyblue", "cyan", "magenta", "dark-turquoise", "dark-pink", "coral", "light-coral", "orange-red", "salmon", "dark-salmon", "khaki", "dark-khaki", "dark-goldenrod", "beige", "olive", "orange", "violet", "dark-violet", "plum", "dark-plum", "dark-olivegreen", "orangered4", "brown4", "sienna4", "orchid4", "mediumpurple3", "slateblue1", "yellow4", "sienna1", "tan1", "sandybrown", "light-salmon", "pink", "khaki1", "lemonchiffon", "bisque", "honeydew", "slategrey", "seagreen", "antiquewhite", "chartreuse", "greenyellow", "gray", "light-gray", "light-grey", "dark-gray", "slategray", "gray0", "gray10", "gray20", "gray30", "gray40", "gray50", "gray60", "gray70", "gray80", "gray90", "gray100" ]
     }
 
@@ -438,7 +721,6 @@ if __name__ == '__main__':
         "method": constants["method"],
         "width": constants["width"],
         "columns": None,
-        "multiplot": constants["multiplot"],
         "steps": constants["steps"],
         "verbose": constants["verbose"]
     }
@@ -585,10 +867,10 @@ if __name__ == '__main__':
             res = check_data_line(time, value, settings["time_format"])
             if res == 1:
                 soft_error("WARNING: file '{}':\n - line #{}: wrong time format.".format(i_file, index_line+1), settings["verbose"], 1, settings["ignore_error"])
-                verbose(" - skipping".format(e.code), settings["verbose"], 1)
+                verbose(" - skipping", settings["verbose"], 1)
             elif res == 2:
                 soft_error("WARNING: file '{}':\n - line #{}: wrong value.".format(i_file, index_line+1), settings["verbose"], 1, settings["ignore_error"])
-                verbose(" - skipping".format(e.code), settings["verbose"], 1)
+                verbose(" - skipping", settings["verbose"], 1)
 
             "Kontrola dalších chyb v datu (13. měsíc apod.)"
             try:
@@ -644,170 +926,21 @@ if __name__ == '__main__':
             overlaping = True
             break
 
-    if settings["multiplot"] == "on":
-        verbose("Multiplot set to 'on'. One graph for each input file will be generated.", settings["verbose"], 1)
-        """Pro každý soubor zvlášť"""
-        """Spočítat columns, distance"""
-    elif not overlaping:
+    if not overlaping:
         verbose("One curve for all input files in one graph will be generated.", settings["verbose"], 1)
         joinedData = ""
 
         "Datumy se nepřekrývají, spojíme je do jednoho grafu"
         for index, i_data in enumerate(suitable_data):
             joinedData += "\n" + i_data if index > 0 else i_data
+
+        data = [ joinedData ]
         
-        "Pokud uživatel nezadal 'columns', vypočítáme nějakou schůdnou hodnotu"
-        if not settings["columns"]:
-            tmp = math.ceil((joinedData.count("\n")+1)/2) 
-            settings["columns"] = tmp if tmp <= constants["max_columns"] else constants["max_columns"]
-
-        "Najdeme minimální a maximální hodnotu mezi datumy."
-        xmax = int(joinedData.split()[-2:-1][0])
-        xmin = int(joinedData.split()[0])
-
-        "Spočítáme dobu mezi jednotlivými záznamy, po které budeme tisknout bod do grafu."
-        distance = (xmax-xmin) / settings["columns"]
-
-        out = ""
-        col_num = 1
-        count = 0
-        height = 0
-        ymax = None
-        ymin = None
-        start = None
-        for index_line, i_line in enumerate(joinedData.split("\n")):
-            time, value = i_line.split()
-            time = int(time)
-            value = float(value)
-            if index_line == 0:
-                start = time
-            count += 1
-
-            if (start + col_num * distance) < time or start == time:
-                if settings["method"] == "average":
-                    height += value
-                else:
-                    height = value if math.fabs(value) > math.fabs(height) else height
-                continue
-
-            if settings["method"] == "average":
-                height = height / (count-1)
-
-            if col_num == 1:
-                ymax = height
-                ymin = height
-            else:
-                ymax = height if height > ymax else ymax
-                ymin = height if height < ymin else ymin
-
-            tmp = start + distance * col_num - distance / 2
-            out += "{} {}\n".format(tmp, height)
-
-            height = value
-            count = 1
-            col_num += 1
-
-            while start + col_num * distance < time:
-                col_num += 1
-
-        "Pokud jsme končili uprostřed rozsahu jednoho zápisu do grafu, musíme přidat i poslední záznam, který byl přeskočen."
-        if start + col_num * distance < time:
-            if settings["method"] == "average":
-                height = height / (count-1)
-            ymax = height if height > ymax else ymax
-            ymin = height if height < ymin else ymin
-            tmp = start + distance * col_num - distance / 2
-            out += "{} {}".format(tmp, height)
-
-        "Kontrola hodnot, zdali jsou v zadaném rozsahu"
-        if settings["min_val"] not in ["min", "auto"]:
-            if ymax < settings["min_val"]:
-                soft_error("WARNING: 'y_min' out of range.", settings["verbose"], 1, settings["ignore_error"])
-                verbose(" - 'y_min' not set", settings["verbose"], 1)
-            else:
-                ymin = settings["min_val"]
-
-        if settings["max_val"] not in ["max", "auto"]:
-            if ymin > settings["max_val"]:
-                soft_error("WARNING: 'y_max' out of range.", settings["verbose"], 1, settings["ignore_error"])
-                verbose(" - 'y_max' not set", settings["verbose"], 1)
-            else:
-                ymax = settings["max_val"]
-
-        "Skok, o který se má posunout tečka v každém kroku."
-        jump = (ymax - ymin) / settings["steps"]
-
-        "Pokud není nastavena maximální/minimální hodnota, upraví se 'ymax'/'ymin', aby byla nahoře/dole mezera."
-        if settings["max_val"] == "max":
-            ymax = 0 if ymax <= 0 and ymax + 20 * jump > 0 else ymax + 20 * jump
-        if settings["min_val"] == "min":
-            ymin = 0 if ymin >= 0 and ymin - 20 * jump < 0 else ymin - 20 * jump
-
-        "Spočítáme, kolik obrázků bude trvat dokončení každého sloupce a uložíme si nejvyšší hodnotu."
-        frames = None
-        tmp_border = math.fabs(ymin) if math.fabs(ymin) < math.fabs(ymax) else math.fabs(ymax)
-        for index, line in enumerate(out):
-            time, value = i_line.split()
-            value = float(value)
-
-            tmp_val = (tmp_border - math.fabs(value)) / jump
-            tmp_val += index * settings["delay"]
-            if not frames or tmp_val > frames:
-                frames = tmp_val
-
-        if not settings["speed"]:
-            settings["speed"] = round(frames / (settings["time"] * settings["fps"]), 2)
-        if not settings["fps"]:
-            settings["fps"] = round(frames / (settings["speed"] * settings["time"]), 2)
-
-        "Spočítáme počet framů vzhledem ke 'speed'"
-        real_frames = frames if int(frames / settings["speed"]) == frames / settings["speed"] else round(frames / settings["speed"])
-
-        digits = len(str(real_frames))
-
-        yrange = ""
-        if settings["min_val"] != "auto":
-            yrange = "{}:".format(ymin)
-        if settings["max_val"] != "auto":
-            yrange += ":{}".format(ymax) if yrange == "" else "{}".format(ymax)
-
-        "Nastavení popisků na ose x."
-        xtics = ""
-        tmp = xmin + (xmax-xmin) // 20
-        while tmp < xmax:
-            xtics += "'{:2d}:{:02d}:{:02d}' {:d},".format((tmp//60//60) % 24, (tmp//60) % 60, tmp % 60, tmp)
-            tmp += (xmax - xmin) // 10
-
-        general_gnuplot = 'set term png truecolor\n\
-                           set key off\n\
-                           set xrange ["{xmin}":"{xmax}"] noreverse nowriteback\n\
-                           set yrange [{yrange}] noreverse nowriteback\n\
-                           set style fill transparent solid {transparent} {border}\n\
-                           set xtics rotate by -45 scale 1 font ",10" ({xtics})\n'\
-                           .format(xmin = xmin, xmax = xmax, yrange = yrange, transparent = settings["transparent"],
-                                   border = settings["border"], xtics = xtics[0:len(xtics)-1])
-
-        if settings["legend"]:
-            general_gnuplot += 'set title "{legend}"\n'.format(legend = settings["legend"])
-
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            general_gnuplot += 'set output "test.png"\n'
-
-            if "colors" not in settings:
-                general_gnuplot += 'plot "-" u 1:2:({circle_size}) w circles lc rgb "{color}" fill solid\n'.format(circle_size = 1500*settings["width"], color = constants["colors"][random.randrange(len(constants["colors"]))])
-            else:
-                general_gnuplot += 'plot "-" u 1:2:({circle_size}) w circles lc rgb "{color}" fill solid\n'.format(circle_size = 1500*settings["width"], color = settings["colors"][random.randrange(len(settings["colors"]))])
-
-            general_gnuplot += out
-
-            gnuplot = subprocess.Popen(["gnuplot", "-persist"], stdin=subprocess.PIPE).stdin         
-            gnuplot.write(general_gnuplot.encode())
-            gnuplot.write(b"\ne")
-            gnuplot.flush()
+        process_data(data, settings)
 
     else:
         verbose("One curve for each input file in one graph will be generated.", settings["verbose"], 1)
-        """Spočítat columns, distance"""
-        for i_data in suitable_data:
-            print(i_data)
 
+        data = suitable_data
+
+        process_data(data, settings)
