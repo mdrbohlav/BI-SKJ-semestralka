@@ -266,7 +266,7 @@ def check_pathname(val):
         raise ArgumentTypeError(message)
 
 def check_file(val):
-    """Checks if the file should be download from the internet. If not it checks the local file."""
+    """Checks if the file should be downloaded from the internet. If not it checks the local file."""
     if "http" in val:
         return val
     else:
@@ -356,7 +356,7 @@ def select_drawable_data(data, distance, settings):
     return [res_output, ymax, ymin]
 
 def count_frames(data, ymax, ymin, jump, delay):
-    """Counts how many frames will take to each circle to get to the position and returns the highest value."""
+    """Counts how many frames will take to each point to get to the position and returns the highest value."""
     frames = None
     tmp_border = math.fabs(ymin) if math.fabs(ymin) > math.fabs(ymax) else math.fabs(ymax)
     for index, line in enumerate(data.split("\n")):
@@ -384,7 +384,7 @@ def get_min_date(data, prevMin):
     return prevMin
 
 def set_speed_fps_if_needed(settings, frames):
-    """Sets FPS and speed it hey are not set."""
+    """Sets FPS and speed if they are not set."""
     if not settings["speed"]:
         settings["speed"] = round(frames / (settings["time"] * settings["fps"]), 2)
     if not settings["fps"]:
@@ -514,6 +514,8 @@ def generate_video(settings, digits, tmp_dir):
                   ' {}/{}'.format(settings["name"], video_name)))
     proc = subprocess.Popen(shlex.split(cmd), stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
     output = proc.communicate()[0].decode()
+
+    verbose(output, settings["verbose"], 2)
     
     return "Video generated: '{}/{}'".format(settings["name"], video_name)
 
@@ -651,8 +653,10 @@ def process_data(data, settings, constants):
                     partial_time, partial_value = partial_out[index][index_line].split()
                     partial_value = float(partial_value)
 
+                    "'value' is a target value"
                     tmp = -1 if value < 0 else 1
 
+                    "'partial_value' is value for the current frame"
                     val = partial_value - tmp * jump
 
                     if math.fabs(val) <= math.fabs(value) or (val > 0 and value < 0) or (val < 0 and value > 0):
