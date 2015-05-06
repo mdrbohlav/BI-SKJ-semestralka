@@ -225,10 +225,6 @@ def check_effect(settings, constants):
                     if "colors" not in settings:
                         settings["colors"] = []
                     settings["colors"].append(c)
-            else:
-                soft_error("WARNING: wrong effect parameter: transparent has to be a number in range (0;1>.", settings["verbose"], 1, settings["ignore_error"])
-                verbose(" - Using default value.", settings["verbose"], 1)
-                settings["transparent"] = constants["transparent"]
         elif directive == "method":
             if value not in [ "average", "top" ]:
                 soft_error("WARNING: wrong effect parameter: method has to be set to 'average' or 'top'.", settings["verbose"], 1, settings["ignore_error"])
