@@ -53,21 +53,21 @@ if __name__ == '__main__':
 
     parser = ArgumentParser(description="Script that creates animation from the provided input data. It uses 'gnuplot' for generating each frame and 'ffmpeg' to generate animation in format 'mp4'. For more info please read documentation.", epilog="Thank you for reading this. Michal Drbohlav (drbohmi1)")
     parser.add_argument('--version', action='version', version='1.0')
-    parser.add_argument('-t', dest='time_format', help='Format of the timestamp.')
-    parser.add_argument('-Y', dest='max_val', help='Sets maximal value of the X axis. Options are int/float or "max".')
-    parser.add_argument('-y', dest='min_val', help='Sets minimal value of the X axis. Options are int/float or "min".')
-    parser.add_argument('-X', dest='max_time', help='Sets maximal value of the Y axis. Options are int/float or "max".')
-    parser.add_argument('-x', dest='min_time', help='Sets minimal value of the Y axis. Options are int/float or "min".')
-    parser.add_argument('-S', dest='speed', help='Says how many rows of the data fits one frame.')
-    parser.add_argument('-T', dest='time', help='Says how long the animation should be.')
-    parser.add_argument('-F', dest='fps', help='Sets frame per seconds.')
-    parser.add_argument('-l', dest='legend', help='Sets title of the graph.')
+    parser.add_argument('-t', '--TimeFormat', dest='time_format', help='Format of the timestamp.')
+    parser.add_argument('-Y', '--YMax', dest='max_val', help='Sets maximal value of the X axis. Options are int/float or "max".')
+    parser.add_argument('-y', '--YMin', dest='min_val', help='Sets minimal value of the X axis. Options are int/float or "min".')
+    parser.add_argument('-X', '--XMax', dest='max_time', help='Sets maximal value of the Y axis. Options are int/float or "max".')
+    parser.add_argument('-x', '--XMin', dest='min_time', help='Sets minimal value of the Y axis. Options are int/float or "min".')
+    parser.add_argument('-S', '--Speed', dest='speed', help='Says how many rows of the data fits one frame.')
+    parser.add_argument('-T', '--Time', dest='time', help='Says how long the animation should be.')
+    parser.add_argument('-F', '--FPS', dest='fps', help='Sets frame per seconds.')
+    parser.add_argument('-l', '--Legend', dest='legend', help='Sets title of the graph.')
     parser.add_argument('-g', dest='gnuplot', action='append', help='Specify your own gnuplot params. Available areonly those starting with "set" and "unset"')
     parser.add_argument('-e', dest='effect', action='append', help='Specify effect parameters. Available options are in the documentation.')
-    parser.add_argument('-f', dest='config', type=functions.check_pathname, help='Specify file with configuratinon.')
-    parser.add_argument('-n', dest='name', help='Sets name of the input directory and animation.')
-    parser.add_argument('-E', dest='ignore_error', action='store_true', help='If set not critical errors are shown as WARNING and script continues.')
-    parser.add_argument('-v', dest='verbose', action='count', help='Sets level of verbose. Maximum is 2.')
+    parser.add_argument('-f', '--ConfigFile', dest='config', type=functions.check_pathname, help='Specify file with configuratinon.')
+    parser.add_argument('-n', '--Name', dest='name', help='Sets name of the input directory and animation.')
+    parser.add_argument('-E', '--IgnoreError', dest='ignore_error', action='store_true', help='If set not critical errors are shown as WARNING and script continues.')
+    parser.add_argument('-v', '--Verbose', dest='verbose', action='count', help='Sets level of verbose. Maximum is 2.')
     parser.add_argument('input', type=functions.check_file, action='append', nargs='+', help='Specify input data files.')
 
     args = parser.parse_args()
@@ -155,6 +155,8 @@ if __name__ == '__main__':
             try:
                 with urllib.request.urlopen(input_file) as i_file:
                     data[input_file] = functions.load_data_file(i_file)
+                    if not data[input_file]:
+                        del data[input_file]
                         
             except HTTPError as e:
                 functions.soft_error("ERROR: The server couldn\'t fulfill the request.", settings["verbose"], 1, settings["ignore_error"])
@@ -166,6 +168,8 @@ if __name__ == '__main__':
             functions.verbose("Opening file '{}'".format(input_file), settings["verbose"], 2)
             with open(input_file, mode='rb') as i_file:
                 data[input_file] = functions.load_data_file(i_file)
+                if not data[input_file]:
+                        del data[input_file]
 
     if len(data) == 0:
         functions.error("No input data were loaded.")
@@ -228,7 +232,7 @@ if __name__ == '__main__':
     if len(suitable_data) == 0:
         functions.error("ERROR: No suitable data found in any of the input files.")
 
-    "Sorts input files using the date. (bubble sort)"
+    """Sorts input files using the date. (bubble sort)"""
     for index_file in range(len(suitable_data)-1, 0, -1):
         for i in range(index_file):
             time = suitable_data[i].split()[0]
@@ -238,7 +242,7 @@ if __name__ == '__main__':
                 suitable_data[i] = suitable_data[i+1]
                 suitable_data[i+1] = tmp
 
-    "Checks overlaping of the dates in all input files."
+    """Checks overlaping of the dates in all input files."""
     overlaping = False
     for index, i_data in enumerate(suitable_data):
         if index == 0:
@@ -253,7 +257,7 @@ if __name__ == '__main__':
         functions.verbose("One curve for all input files in one graph will be generated.", settings["verbose"], 1)
         joinedData = ""
 
-        "File are not overlaping - we can merge the data."
+        """File are not overlaping - we can merge the data."""
         for index, i_data in enumerate(suitable_data):
             joinedData += "\n" + i_data if index > 0 else i_data
 

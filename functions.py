@@ -382,9 +382,9 @@ def get_min_date(data, prevMin):
 def set_speed_fps_if_needed(settings, frames):
     """Sets FPS and speed if they are not set."""
     if not settings["speed"]:
-        settings["speed"] = round(frames / (settings["time"] * settings["fps"]), 2)
+        settings["speed"] = round(frames / (int(settings["time"]) * int(settings["fps"])), 2)
     if not settings["fps"]:
-        settings["fps"] = round(frames / (settings["speed"] * settings["time"]), 2)
+        settings["fps"] = round(frames / (int(settings["speed"]) * int(settings["time"])), 2)
     return settings
 
 def set_y_range(min_val, max_val, ymin, ymax):
@@ -496,12 +496,21 @@ def generate_video(settings, digits, tmp_dir):
     index = 1
     video_name = settings["name"] + '.mp4'
     print("Creating target directory for the video.")
-    while os.path.isdir(settings["name"]):
-        if index == 1:
-            settings["name"] += '_{}'.format(index)
-        else:
-            settings["name"] = settings["name"][:settings["name"].rfind("_")] + '_{}'.format(index)
-        index += 1
+    
+    directories = [x[0] for x in os.walk('./')]
+    tmp = None
+    for directory in directories:
+        if re.compile("^./" + settings["name"] + ".*$").match(directory):
+            index = directory.rfind("_")
+            if index == -1 or not directory[index+1:].isdigit():
+                tmp = 1
+            else:
+                if tmp < int(directory[index+1:]) + 1:
+                    tmp = int(directory[index+1:]) + 1
+
+    if tmp:
+        settings["name"] = "{}_{}".format(settings["name"], tmp)
+
     os.makedirs(settings["name"])
 
     print("Generating video...")
@@ -516,7 +525,7 @@ def generate_video(settings, digits, tmp_dir):
     return "Video generated: '{}/{}'".format(settings["name"], video_name)
 
 def process_data(data, settings, constants):
-    """Calcualtes all needed values and generates all frames."""
+    """Calculates all needed values and generates all frames."""
     print("Processing data and generating all frames...")
     count = 0
     xmax = None
@@ -565,7 +574,7 @@ def process_data(data, settings, constants):
     settings = set_speed_fps_if_needed(settings, frames)
 
     "Counts # of the frames according to the speed."
-    real_frames = frames if int(frames / settings["speed"]) == frames / settings["speed"] else round(frames / settings["speed"])
+    real_frames = frames if int(frames) / int(settings["speed"]) == int(frames) / int(settings["speed"]) else round(int(frames) / int(settings["speed"]))
 
     digits = len(str(real_frames))
 
@@ -652,7 +661,7 @@ def process_data(data, settings, constants):
                     "'value' is a target value"
                     tmp = -1 if value < 0 else 1
 
-                    "'partial_value' is value for the current frame"
+                    "'partial_value' is a value for the current frame"
                     val = partial_value - tmp * jump
 
                     if math.fabs(val) <= math.fabs(value) or (val > 0 and value < 0) or (val < 0 and value > 0):
