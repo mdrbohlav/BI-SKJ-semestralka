@@ -1,0 +1,15 @@
+Executing tests:
+#1
+./circles_graph.py -E -v -f "test1/config" -n "graph1" "test1/da ta 1"
+
+#2
+./circles_graph.py -E -v -f "test2/config" -n "graph2" "test2/data1"
+
+#3
+./circles_graph.py -E -v -f "test3/config" -n "graph3" "test3/data1"
+
+#4
+./circles_graph.py -E -v -f "test4/config" -n "graph4" "test4/data1" "test4/data2" "test4/data3" "test4/data4"
+
+#5
+./circles_graph.py -E -v -f "test5/config" -n "graph5" "test5/input_file_1" "test5/input_file_2" "test5/input_file_3"
