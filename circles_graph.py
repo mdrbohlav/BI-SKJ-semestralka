@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.4
 # -*- coding: utf-8 -*-
 import os
 import subprocess
@@ -51,24 +51,24 @@ if __name__ == '__main__':
         "verbose": constants["verbose"]
     }
 
-    parser = ArgumentParser(description="Under construction...", epilog="Thank you for reading this.")
+    parser = ArgumentParser(description="Script that creates animation from the provided input data. It uses 'gnuplot' for generating each frame and 'ffmpeg' to generate animation in format 'mp4'. For more info please read documentation.", epilog="Thank you for reading this. Michal Drbohlav (drbohmi1)")
     parser.add_argument('--version', action='version', version='1.0')
-    parser.add_argument('-t', dest='time_format', help='Format of the timestamp. Available are values %Y, %y, %m, %d, %H, %M, %S.')
+    parser.add_argument('-t', dest='time_format', help='Format of the timestamp.')
     parser.add_argument('-Y', dest='max_val', help='Sets maximal value of the X axis. Options are int/float or "max".')
     parser.add_argument('-y', dest='min_val', help='Sets minimal value of the X axis. Options are int/float or "min".')
     parser.add_argument('-X', dest='max_time', help='Sets maximal value of the Y axis. Options are int/float or "max".')
     parser.add_argument('-x', dest='min_time', help='Sets minimal value of the Y axis. Options are int/float or "min".')
-    parser.add_argument('-S', dest='speed')
-    parser.add_argument('-T', dest='time')
-    parser.add_argument('-F', dest='fps')
-    parser.add_argument('-l', dest='legend')
-    parser.add_argument('-g', dest='gnuplot', action='append')
-    parser.add_argument('-e', dest='effect', action='append')
-    parser.add_argument('-f', dest='config', type=functions.check_pathname)
-    parser.add_argument('-n', dest='name')
-    parser.add_argument('-E', dest='ignore_error', action='store_true')
-    parser.add_argument('-v', dest='verbose', action='count')
-    parser.add_argument('input', type=functions.check_file, action='append', nargs='+')
+    parser.add_argument('-S', dest='speed', help='Says how many rows of the data fits one frame.')
+    parser.add_argument('-T', dest='time', help='Says how long the animation should be.')
+    parser.add_argument('-F', dest='fps', help='Sets frame per seconds.')
+    parser.add_argument('-l', dest='legend', help='Sets title of the graph.')
+    parser.add_argument('-g', dest='gnuplot', action='append', help='Specify your own gnuplot params. Available areonly those starting with "set" and "unset"')
+    parser.add_argument('-e', dest='effect', action='append', help='Specify effect parameters. Available options are in the documentation.')
+    parser.add_argument('-f', dest='config', type=functions.check_pathname, help='Specify file with configuratinon.')
+    parser.add_argument('-n', dest='name', help='Sets name of the input directory and animation.')
+    parser.add_argument('-E', dest='ignore_error', action='store_true', help='If set not critical errors are shown as WARNING and script continues.')
+    parser.add_argument('-v', dest='verbose', action='count', help='Sets level of verbose. Maximum is 2.')
+    parser.add_argument('input', type=functions.check_file, action='append', nargs='+', help='Specify input data files.')
 
     args = parser.parse_args()
 
